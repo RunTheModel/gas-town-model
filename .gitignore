@@ -3,6 +3,7 @@ states/
 
 # Compiled output
 bin/
+*.tla
 
 # TLC temp files
 *.old
