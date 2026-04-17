@@ -1,7 +1,7 @@
 {
   "name": "Refinery",
-  "version": "0.2.0",
-  "description": "Library component. Shared merge queue. Receives MergeReady from polecats, notifies MRs of processing and completion. Sequential: one MR at a time. Two-polecat/two-MR capacity.",
+  "version": "0.3.0",
+  "description": "Library component. Shared merge queue. Receives MergeReady from polecats, notifies MRs of processing and completion. Sequential: one MR at a time. Two-polecat/two-MR capacity. v0.3: added NotifiedMR1/NotifiedMR2 intermediate states to enforce Processing-before-Merged ordering on the MR_NOTIFY channel. Without this, the random simulator could send Merged before Processing, deadlocking the MR.",
 
   "ports": {
     "MERGE_READY1": {
@@ -14,27 +14,27 @@
     },
     "MR_NOTIFY1": {
       "direction": "out",
-      "description": "notifies MR 1 of processing and merge completion. Tagged 'Processing' or 'Merged'."
+      "description": "notifies MR 1 of processing and merge completion."
     },
     "MR_NOTIFY2": {
       "direction": "out",
-      "description": "notifies MR 2 of processing and merge completion. Tagged 'Processing' or 'Merged'."
+      "description": "notifies MR 2 of processing and merge completion."
     }
   },
 
   "actors": [
     {
       "name": "Refinery",
-      "owner": "Shared merge queue. Sequential processing. Receives MergeReady, notifies the relevant MR, processes, notifies merged, returns to idle.",
+      "owner": "Shared merge queue. Sequential. Intermediate NotifiedMR states enforce Processing-then-Merged ordering.",
       "initialState": "Idle",
-      "states": ["Idle", "ProcessingMR1", "ProcessingMR2"],
+      "states": ["Idle", "ProcessingMR1", "NotifiedMR1", "ProcessingMR2", "NotifiedMR2"],
       "triples": [
-        {"currentState": "Idle",          "event": "receives MergeReady from polecat1: claim MR1",   "newState": "ProcessingMR1", "isReceive": true, "receiveFrom": "MERGE_READY1", "tag": "MergeReady"},
-        {"currentState": "ProcessingMR1", "event": "notify MR1 it is being processed",              "newState": "ProcessingMR1", "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "Processing"},
-        {"currentState": "ProcessingMR1", "event": "MR1 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "Merged"},
-        {"currentState": "Idle",          "event": "receives MergeReady from polecat2: claim MR2",   "newState": "ProcessingMR2", "isReceive": true, "receiveFrom": "MERGE_READY2", "tag": "MergeReady"},
-        {"currentState": "ProcessingMR2", "event": "notify MR2 it is being processed",              "newState": "ProcessingMR2", "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "Processing"},
-        {"currentState": "ProcessingMR2", "event": "MR2 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "Merged"}
+        {"currentState": "Idle",           "event": "receives MergeReady from polecat1",              "newState": "ProcessingMR1", "isReceive": true, "receiveFrom": "MERGE_READY1", "tag": "MergeReady"},
+        {"currentState": "ProcessingMR1",  "event": "notify MR1 it is being processed",              "newState": "NotifiedMR1",   "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "Processing"},
+        {"currentState": "NotifiedMR1",    "event": "MR1 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "Merged"},
+        {"currentState": "Idle",           "event": "receives MergeReady from polecat2",              "newState": "ProcessingMR2", "isReceive": true, "receiveFrom": "MERGE_READY2", "tag": "MergeReady"},
+        {"currentState": "ProcessingMR2",  "event": "notify MR2 it is being processed",              "newState": "NotifiedMR2",   "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "Processing"},
+        {"currentState": "NotifiedMR2",    "event": "MR2 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "Merged"}
       ]
     }
   ],

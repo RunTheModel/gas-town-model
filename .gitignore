@@ -1,9 +1,13 @@
 # TLC state directories
 states/
 
-# Compiled output
-bin/
+# Compiled TLA output
+bin/*.tla
+bin/*.cfg
 *.tla
+
+# Generated Python is committed (needed for Streamlit Cloud)
+# Regenerate with: build.cmd
 
 # TLC temp files
 *.old
