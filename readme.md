@@ -2,6 +2,9 @@
 
 This repo contains artifacts created by modeling the Gas Town Convoy flow in Kinner, a new formal modeling language under development at [runthemodel.dev](https://runthemodel.dev).  They are being used to drive [a web simulator](https://gastown-demo.salmonfield-c02b39a2.eastus.azurecontainerapps.io/) you can play with today.
 
+
+![alt text](image.png)
+
 ## What is Kinner?
 Kinner is a modeling language that creates verifiable models and checks them with the TLA+ TLC model checker via the Kinner compiler known as Earhart. Kinner has not been released yet but will be released for preview very soon (likely before May 1 2026).
 
