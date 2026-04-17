@@ -7,8 +7,12 @@ sys.path.insert(0, str(Path(__file__).parent / "bin"))
 import streamlit as st
 from ConvoyLands import ConvoyLands
 
-st.set_page_config(page_title="Convoy Lands", layout="wide")
-st.title("Convoy Lands -- Interactive Simulator")
+st.set_page_config(page_title="Convoy Lands -- Gas Town Simulator", layout="wide")
+st.title("Convoy Lands")
+st.caption("An interactive simulator of the Gas Town convoy-landing flow. "
+           "15 components, 4 safety invariants, generated from a verified Kinner spec. "
+           "Click transitions to step through the system. "
+           "Grey buttons mean the guard isn't satisfied -- the model won't let you cheat.")
 
 if "sim" not in st.session_state:
     st.session_state.sim = ConvoyLands(seed=42)
@@ -17,7 +21,7 @@ if "sim" not in st.session_state:
 
 sim = st.session_state.sim
 
-# Sidebar: controls
+# Sidebar: controls + branding
 with st.sidebar:
     st.header("Controls")
     if st.button("Reset"):
@@ -28,6 +32,14 @@ with st.sidebar:
     st.metric("Steps", st.session_state.step_count)
     if st.session_state.violations:
         st.error(f"{len(st.session_state.violations)} violation(s)")
+
+    st.divider()
+    st.markdown("**Sponsored by [runthemodel.dev](https://runthemodel.dev)**")
+    st.markdown(
+        "[Blog](https://runthemodel.substack.com) | "
+        "[GitHub](https://github.com/RunTheModel) | "
+        "[Source for this demo](https://github.com/RunTheModel/gas-town-model)"
+    )
 
 # Collect enabled transitions, skip self-loops
 enabled = [(alias, tr) for alias, tr in sim.enabled_transitions()
