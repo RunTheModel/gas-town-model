@@ -1,3 +1,4 @@
+#Paste this into EDOTOR.NET for a rendered diagram (or use your favorite Graphviz DOT visualizer)
 digraph Composition {
   rankdir=LR;
   compound=true;
