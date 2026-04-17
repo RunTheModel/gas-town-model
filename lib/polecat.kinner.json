@@ -1,0 +1,46 @@
+{
+  "name": "Polecat",
+  "version": "0.2.1",
+  "description": "Library component. The single Polecat archetype: a Claude Code session running with the polecat role. Models BOTH the work-coordination lifecycle (Absent -> Working -> Done -> Idle) AND the substrate-layer hook-receive boundary (HOOK_IN port). Different applications bind different subsets of ports: convoy-lands bindings exercise MERGE_READY/ISSUE_OBSERVE; polecat-receives-hook bindings exercise HOOK_IN. Both paths to Working exist (option C): SLING-receive AND observe-driven.",
+
+  "ports": {
+    "SLING": {
+      "direction": "in",
+      "description": "receives a sling assignment from Feeder."
+    },
+    "MERGE_READY": {
+      "direction": "out",
+      "description": "signals the refinery that work is complete (done.go:1170 nudgeRefinery). Tagged 'MergeReady'."
+    },
+    "HOOK_IN": {
+      "direction": "in",
+      "description": "receives a Claude Code session lifecycle event (PreCompact, etc.)."
+    },
+    "ISSUE_OBSERVE": {
+      "direction": "observe",
+      "variable": "issueState",
+      "states": ["Open", "Hooked", "InProgress", "Closed"],
+      "description": "observes the assigned Issue's state."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Polecat",
+      "owner": "Polecat agent. Option C: both SLING-receive and observe-driven paths to Working.",
+      "initialState": "Absent",
+      "states": ["Absent", "Working", "HandlingHook", "Done", "Idle"],
+      "triples": [
+        {"currentState": "Absent",       "event": "polecat receives sling assignment (channel-driven path)",                  "newState": "Working",      "isReceive": true, "receiveFrom": "SLING", "tag": "Sling", "guard": "issueState = ISSUE_OBSERVE_Hooked"},
+        {"currentState": "Absent",       "event": "polecat advances by observing its assigned issue is hooked (observe-driven path)", "newState": "Working", "guard": "issueState = ISSUE_OBSERVE_Hooked"},
+        {"currentState": "Working",      "event": "work complete: signal refinery",                                           "newState": "Done",         "isSend": true, "sendTo": "MERGE_READY", "tag": "MergeReady", "guard": "issueState = ISSUE_OBSERVE_InProgress \\/ issueState = ISSUE_OBSERVE_Closed"},
+        {"currentState": "Done",         "event": "agent state transitions to idle",                                          "newState": "Idle",         "guard": "issueState = ISSUE_OBSERVE_Closed"},
+        {"currentState": "Idle",         "event": "terminal",                                                                 "newState": "Idle"},
+        {"currentState": "Working",      "event": "polecat receives PreCompact lifecycle event (substrate-layer)",             "newState": "HandlingHook", "isReceive": true, "receiveFrom": "HOOK_IN", "tag": "PreCompact"},
+        {"currentState": "HandlingHook", "event": "hook handler completes; headless polecat returns to working",              "newState": "Working"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

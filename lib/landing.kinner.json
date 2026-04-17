@@ -1,0 +1,53 @@
+{
+  "name": "Landing",
+  "version": "0.1.0",
+  "description": "Library component. The landing ceremony -- orchestrates worktree cleanup before a convoy can reach its terminal landed state. Sends CLEAN to each worktree, observes their completion, reports Done. Per cmd/convoy.go:1243-1255: phase 1 is worktree cleanup, phase 2 is convoy close, phase 3 is notifications. This component covers phase 1.",
+
+  "ports": {
+    "CLEAN1": {
+      "direction": "out",
+      "description": "sends Clean to the first worktree. Tagged 'Clean'."
+    },
+    "CLEAN2": {
+      "direction": "out",
+      "description": "sends Clean to the second worktree. Tagged 'Clean'."
+    },
+    "CONVOY_OBSERVE": {
+      "direction": "observe",
+      "variable": "convoyState",
+      "states": ["Closed", "ForceLandPending"],
+      "description": "observes convoy state to know when to start cleanup. Fires on Closed (normal) or ForceLandPending (force path)."
+    },
+    "WT1_OBSERVE": {
+      "direction": "observe",
+      "variable": "wt1State",
+      "states": ["Cleaned"],
+      "description": "observes first worktree's completion."
+    },
+    "WT2_OBSERVE": {
+      "direction": "observe",
+      "variable": "wt2State",
+      "states": ["Cleaned"],
+      "description": "observes second worktree's completion."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Landing",
+      "owner": "Cleanup ceremony. Idle until convoy reaches Closed or ForceLandPending. Fires CLEAN to each worktree sequentially, waits for each to report Cleaned via observe, then Done.",
+      "initialState": "Idle",
+      "states": ["Idle", "Cleaning1", "WaitingForCleanup2", "Cleaning2", "VerifyingCleanup", "Done"],
+      "triples": [
+        {"currentState": "Idle",                "event": "convoy ready for cleanup: start wt1",       "newState": "Cleaning1",         "isSend": true, "sendTo": "CLEAN1", "tag": "Clean", "guard": "convoyState = CONVOY_OBSERVE_Closed \\/ convoyState = CONVOY_OBSERVE_ForceLandPending"},
+        {"currentState": "Cleaning1",           "event": "wt1 cleaned: prep for wt2",                 "newState": "WaitingForCleanup2", "guard": "wt1State = WT1_OBSERVE_Cleaned"},
+        {"currentState": "WaitingForCleanup2",  "event": "fire wt2 clean",                            "newState": "Cleaning2",         "isSend": true, "sendTo": "CLEAN2", "tag": "Clean"},
+        {"currentState": "Cleaning2",           "event": "wt2 cleaned: verify both",                  "newState": "VerifyingCleanup",  "guard": "wt2State = WT2_OBSERVE_Cleaned"},
+        {"currentState": "VerifyingCleanup",    "event": "both worktrees confirmed cleaned",          "newState": "Done",              "guard": "wt1State = WT1_OBSERVE_Cleaned /\\ wt2State = WT2_OBSERVE_Cleaned"},
+        {"currentState": "Done",                "event": "terminal",                                  "newState": "Done"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

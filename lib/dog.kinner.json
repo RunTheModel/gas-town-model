@@ -1,0 +1,45 @@
+{
+  "name": "Dog",
+  "version": "0.1.0",
+  "description": "Library component. Models a dog -- gastown's infrastructure-worker pattern (per gastown-src/internal/dog/). Dogs are non-Claude workers (shell scripts, deployment tooling) that the Deacon assigns plugin work to. Distinct from Polecats: dogs are stateless workers; the Deacon manages their assignment lifecycle. Comparison to gastown-guide/dog-dispatch: that monolith has Dog plus per-rig Worktree actors (Rig1Worktree, Rig2Worktree) inline. This library component models just the Dog state machine; multi-rig coordination becomes the composing application's concern.",
+
+  "ports": {
+    "ASSIGN": {
+      "direction": "in",
+      "description": "receives an assignment from the Deacon to handle a plugin task. Tagged 'Assign'."
+    },
+    "CLEAR": {
+      "direction": "in",
+      "description": "receives a clear signal from the Deacon when work is done or the dog should be freed. Tagged 'Clear'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Dog",
+      "owner": "Infrastructure worker. Idle = available for assignment. Working = handling an assigned plugin task. Returns to Idle on Clear. Doesn't model the work itself (that's plugin-specific); just the lifecycle state.",
+      "initialState": "Idle",
+      "states": ["Idle", "Working"],
+      "triples": [
+        {
+          "currentState": "Idle",
+          "event": "deacon assigns plugin work to dog",
+          "newState": "Working",
+          "isReceive": true,
+          "receiveFrom": "ASSIGN",
+          "tag": "Assign"
+        },
+        {
+          "currentState": "Working",
+          "event": "deacon clears the dog (work complete or dog freed)",
+          "newState": "Idle",
+          "isReceive": true,
+          "receiveFrom": "CLEAR",
+          "tag": "Clear"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

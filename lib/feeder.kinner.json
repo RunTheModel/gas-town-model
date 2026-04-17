@@ -1,0 +1,40 @@
+{
+  "name": "Feeder",
+  "version": "0.1.0",
+  "description": "Library component. The continuation feeder -- dispatches slings to issues in non-deterministic order. Two-issue capacity (SLING1, SLING2 out-ports). Observes convoy state to know when to start dispatching. N-issue generalization requires more out-ports.",
+
+  "ports": {
+    "SLING1": {
+      "direction": "out",
+      "description": "sends Sling to the first issue. Tagged 'Sling'."
+    },
+    "SLING2": {
+      "direction": "out",
+      "description": "sends Sling to the second issue. Tagged 'Sling'."
+    },
+    "CONVOY_OBSERVE": {
+      "direction": "observe",
+      "variable": "convoyState",
+      "states": ["Open"],
+      "description": "observes convoy state. Dispatching starts when convoy = Open."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Feeder",
+      "owner": "Parallel feeder. Non-deterministic dispatch order per the parallel-feeder fix from the gastown-guide monolith.",
+      "initialState": "Idle",
+      "states": ["Idle", "Slung1Only", "Slung2Only", "BothSlung"],
+      "triples": [
+        {"currentState": "Idle",       "event": "dispatch issue1 first",  "newState": "Slung1Only", "isSend": true, "sendTo": "SLING1", "tag": "Sling", "guard": "convoyState = CONVOY_OBSERVE_Open"},
+        {"currentState": "Idle",       "event": "dispatch issue2 first",  "newState": "Slung2Only", "isSend": true, "sendTo": "SLING2", "tag": "Sling", "guard": "convoyState = CONVOY_OBSERVE_Open"},
+        {"currentState": "Slung1Only", "event": "dispatch issue2 too",    "newState": "BothSlung",  "isSend": true, "sendTo": "SLING2", "tag": "Sling"},
+        {"currentState": "Slung2Only", "event": "dispatch issue1 too",    "newState": "BothSlung",  "isSend": true, "sendTo": "SLING1", "tag": "Sling"},
+        {"currentState": "BothSlung",  "event": "terminal",              "newState": "BothSlung"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

@@ -1,0 +1,23 @@
+# TLC state directories
+states/
+
+# Compiled output
+bin/
+
+# TLC temp files
+*.old
+_tlc_*.cfg
+
+# Python
+__pycache__/
+*.pyc
+
+# Java
+*.class
+
+# Moved to its own repo at C:/projects/RunTheModel/
+runthemodel/
+
+# Per-machine Claude Code state
+.claude/
+tla2tools.jar

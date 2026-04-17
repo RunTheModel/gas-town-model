@@ -1,0 +1,38 @@
+{
+  "name": "Worktree",
+  "version": "0.1.0",
+  "description": "Library component. Models a polecat worktree on disk. Two states (Present, Cleaned), one in-port. Cleaned by an external Landing actor during convoy-land per cmd/convoy.go:1243-1255. Worktree doesn't observe anything; the Landing ceremony in the application drives it via the CLEAN channel. Trivial by design -- the worktree's interesting behavior (creation, branch fetching, deletion timing) lives in the surrounding ceremony, not in the worktree itself.",
+
+  "ports": {
+    "CLEAN": {
+      "direction": "in",
+      "description": "receives a clean signal from the Landing actor when the convoy lands. Tagged 'Clean'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Worktree",
+      "owner": "On-disk worktree directory. Present after polecat spawn (initial state, since this component does not yet model the spawn step). Cleaned after Landing's CLEAN signal -- corresponds to removePolecatWorktree in cmd/convoy.go:1243-1255.",
+      "initialState": "Present",
+      "states": ["Present", "Cleaned"],
+      "triples": [
+        {
+          "currentState": "Present",
+          "event": "Landing fires CLEAN: worktree directory removed",
+          "newState": "Cleaned",
+          "isReceive": true,
+          "receiveFrom": "CLEAN",
+          "tag": "Clean"
+        },
+        {
+          "currentState": "Cleaned",
+          "event": "terminal",
+          "newState": "Cleaned"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

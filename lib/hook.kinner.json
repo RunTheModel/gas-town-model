@@ -1,0 +1,38 @@
+{
+  "name": "Hook",
+  "version": "0.1.0",
+  "description": "Library component. Models a Claude Code session lifecycle hook -- one of the events that fires at an agent's session at well-defined moments (PreCompact, UserPromptSubmit, ToolUse, SessionStart). This first cut models PreCompact specifically, since that is the hook PR 745 (gastownhall/gascity#744) found a bug in. The composing application binds the AGENT port to whichever agent receives the event (Polecat, Mayor, Witness, etc.). gastown-guide does not model hooks at all -- they are substrate-layer events that no spec there describes.",
+
+  "ports": {
+    "AGENT": {
+      "direction": "out",
+      "description": "fires the hook event at the bound agent (the Claude session targeted by this hook). Tagged with 'PreCompact' so the bound receiver can pattern-match on this specific lifecycle event."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Hook",
+      "owner": "Lifecycle event firer. Real implementation: internal/hooks/config.go (type Hook). Each Hook instance fires once when its lifecycle moment is reached; the bound agent receives the event via the AGENT port and is responsible for handling. Generalization to multiple hook types and multi-fire (a single hook firing many times across an agent's lifetime) is deferred -- this is the simplest shape that captures the boundary.",
+      "initialState": "Idle",
+      "states": ["Idle", "Fired"],
+      "triples": [
+        {
+          "currentState": "Idle",
+          "event": "lifecycle moment reached: PreCompact fires",
+          "newState": "Fired",
+          "isSend": true,
+          "sendTo": "AGENT",
+          "tag": "PreCompact"
+        },
+        {
+          "currentState": "Fired",
+          "event": "terminal: hook fires exactly once per lifecycle moment",
+          "newState": "Fired"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

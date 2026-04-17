@@ -1,0 +1,35 @@
+{
+  "name": "MR",
+  "version": "0.3.0",
+  "description": "Library component. Merge request lifecycle. Driven by two mechanisms: observe (Polecat state triggers Absent->Ready) and channel (Refinery sends Processing and Merged events). MR can only reach Merged when the Refinery explicitly merges it -- not spontaneously. This is the load-bearing property: NormalLandMeansWorkIntegrated is honest because MR advancement requires Refinery action.",
+
+  "ports": {
+    "POLECAT_OBSERVE": {
+      "direction": "observe",
+      "variable": "polecatState",
+      "states": ["Done"],
+      "description": "observes polecat state. Absent -> Ready when polecat = Done."
+    },
+    "REFINERY_IN": {
+      "direction": "in",
+      "description": "receives Processing and Merged events from the Refinery. Tagged 'Processing' and 'Merged'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "MR",
+      "owner": "Merge request phase lifecycle. Absent until polecat completes. Ready = in merge queue. Processing = refinery claimed it. Merged = refinery completed the merge.",
+      "initialState": "Absent",
+      "states": ["Absent", "Ready", "Processing", "Merged"],
+      "triples": [
+        {"currentState": "Absent",     "event": "polecat done: MR enters merge queue",       "newState": "Ready",      "guard": "polecatState = POLECAT_OBSERVE_Done"},
+        {"currentState": "Ready",      "event": "refinery claims this MR for processing",    "newState": "Processing", "isReceive": true, "receiveFrom": "REFINERY_IN", "tag": "Processing"},
+        {"currentState": "Processing", "event": "refinery merged this MR",                   "newState": "Merged",     "isReceive": true, "receiveFrom": "REFINERY_IN", "tag": "Merged"},
+        {"currentState": "Merged",     "event": "terminal",                                  "newState": "Merged"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

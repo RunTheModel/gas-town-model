@@ -1,0 +1,38 @@
+{
+  "name": "Crew",
+  "version": "0.1.0",
+  "description": "Library component. Models a crew member -- gastown's human-in-the-loop pattern (per gastown-src/internal/crew/). Crews are persistent identifiers that survive WorkSource cycles -- they don't have working/done state, they just exist. Per gastown-guide/crew-vs-polecat: 'Crew has states Absent | Created only -- no Working/Idle in the code.' This component models exactly that: a presence-tracker that, once Created, stays Created. Use cases: identifying which human is reviewing what, attaching audit metadata, matching merge approvers. Comparison to Polecat: Polecat has a real lifecycle state machine; Crew doesn't. Modeling them with the same depth would be dishonest.",
+
+  "ports": {
+    "CREATE": {
+      "direction": "in",
+      "description": "receives a creation signal that brings the crew into existence. Tagged 'Create'. Once received, no further transitions."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Crew",
+      "owner": "A crew member. Absent until created; Created forever after. The persistence-across-WorkSource-cycles property is captured by the lack of any Created -> Absent transition.",
+      "initialState": "Absent",
+      "states": ["Absent", "Created"],
+      "triples": [
+        {
+          "currentState": "Absent",
+          "event": "crew created (e.g., gt crew add)",
+          "newState": "Created",
+          "isReceive": true,
+          "receiveFrom": "CREATE",
+          "tag": "Create"
+        },
+        {
+          "currentState": "Created",
+          "event": "terminal: crew persists forever once created",
+          "newState": "Created"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

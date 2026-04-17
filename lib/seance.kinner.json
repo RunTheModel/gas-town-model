@@ -1,0 +1,50 @@
+{
+  "name": "Seance",
+  "version": "0.1.0",
+  "description": "Library component. Models the seance pattern -- gastown's session-discovery + question-answer flow (per gastown-src/internal/seance/, per gastown-guide/seance-session-discovery). A Seance instance receives a question via QUERY, looks up context (modeled as observable internal state), and emits an answer via ANSWER. Real gastown uses this for things like 'what's the current state of bead X' answered by reading the event log. This component captures the call-and-response shape; the actual lookup happens at the implementation level (not modeled). Comparison to gastown-guide/seance-session-discovery: that monolith has User + Fork + EventLog inline actors; this component is just the Fork-equivalent (the responder), so the application wiring becomes 'User sends QUERY, Seance responds ANSWER.'",
+
+  "ports": {
+    "QUERY": {
+      "direction": "in",
+      "description": "receives a query that needs answering. Tagged 'Query'."
+    },
+    "ANSWER": {
+      "direction": "out",
+      "description": "emits the answer back to the querying actor. Tagged 'Answer'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Seance",
+      "owner": "Question responder. Pending = waiting for a query. Looking = consulting internal context (the lookup itself isn't modeled at this level). Answering = emitting the response. Returns to Pending so the same Seance can answer multiple queries in sequence.",
+      "initialState": "Pending",
+      "states": ["Pending", "Looking", "Answering"],
+      "triples": [
+        {
+          "currentState": "Pending",
+          "event": "receives a query",
+          "newState": "Looking",
+          "isReceive": true,
+          "receiveFrom": "QUERY",
+          "tag": "Query"
+        },
+        {
+          "currentState": "Looking",
+          "event": "consultation complete (lookup not modeled at this level)",
+          "newState": "Answering"
+        },
+        {
+          "currentState": "Answering",
+          "event": "emit the answer",
+          "newState": "Pending",
+          "isSend": true,
+          "sendTo": "ANSWER",
+          "tag": "Answer"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

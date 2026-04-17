@@ -1,0 +1,40 @@
+{
+  "name": "Mayor",
+  "version": "0.1.0",
+  "description": "Library component. The Mayor agent -- initiates convoys, observes completion, chooses normal-land or force-land. Two exit paths: NormalLanding (convoy reports AllDone) or ForceLanding (operator override via gt convoy land --force). Comparison to gastown-guide/mayor-coordination: that spec models the Mayor's structural role at the Go/session boundary; this component models the Mayor's role in the convoy-lands flow specifically.",
+
+  "ports": {
+    "LAUNCH": {
+      "direction": "out",
+      "description": "sends Launch to the convoy bead to initiate. Tagged 'Launch'."
+    },
+    "LAND": {
+      "direction": "out",
+      "description": "sends Land or ForceLand to the convoy bead to land. Tagged 'Land' or 'ForceLand'."
+    },
+    "CONVOY_DONE": {
+      "direction": "in",
+      "description": "receives ConvoyDone from the convoy bead when all work is complete. Tagged 'ConvoyDone'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Mayor",
+      "owner": "Mayor agent. Running -> LaunchingConvoy -> Observing -> {NormalLanding, ForceLanding} -> Done.",
+      "initialState": "Running",
+      "states": ["Running", "LaunchingConvoy", "Observing", "NormalLanding", "ForceLanding", "Done"],
+      "triples": [
+        {"currentState": "Running",         "event": "mayor launches the convoy",                                    "newState": "LaunchingConvoy", "isSend": true, "sendTo": "LAUNCH", "tag": "Launch"},
+        {"currentState": "LaunchingConvoy", "event": "launch sent, mayor observes",                                  "newState": "Observing"},
+        {"currentState": "Observing",       "event": "convoy reports complete: mayor prepares normal land",           "newState": "NormalLanding",   "isReceive": true, "receiveFrom": "CONVOY_DONE", "tag": "ConvoyDone"},
+        {"currentState": "Observing",       "event": "operator chooses force-land (gt convoy land --force)",          "newState": "ForceLanding"},
+        {"currentState": "NormalLanding",   "event": "mayor sends Land to convoy",                                   "newState": "Done", "isSend": true, "sendTo": "LAND", "tag": "Land"},
+        {"currentState": "ForceLanding",    "event": "mayor sends ForceLand to convoy (--force bypasses AllDone)",    "newState": "Done", "isSend": true, "sendTo": "LAND", "tag": "ForceLand"},
+        {"currentState": "Done",            "event": "terminal",                                                      "newState": "Done"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

@@ -1,0 +1,43 @@
+{
+  "name": "Refinery",
+  "version": "0.2.0",
+  "description": "Library component. Shared merge queue. Receives MergeReady from polecats, notifies MRs of processing and completion. Sequential: one MR at a time. Two-polecat/two-MR capacity.",
+
+  "ports": {
+    "MERGE_READY1": {
+      "direction": "in",
+      "description": "receives MergeReady from polecat 1. Tagged 'MergeReady'."
+    },
+    "MERGE_READY2": {
+      "direction": "in",
+      "description": "receives MergeReady from polecat 2. Tagged 'MergeReady'."
+    },
+    "MR_NOTIFY1": {
+      "direction": "out",
+      "description": "notifies MR 1 of processing and merge completion. Tagged 'Processing' or 'Merged'."
+    },
+    "MR_NOTIFY2": {
+      "direction": "out",
+      "description": "notifies MR 2 of processing and merge completion. Tagged 'Processing' or 'Merged'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Refinery",
+      "owner": "Shared merge queue. Sequential processing. Receives MergeReady, notifies the relevant MR, processes, notifies merged, returns to idle.",
+      "initialState": "Idle",
+      "states": ["Idle", "ProcessingMR1", "ProcessingMR2"],
+      "triples": [
+        {"currentState": "Idle",          "event": "receives MergeReady from polecat1: claim MR1",   "newState": "ProcessingMR1", "isReceive": true, "receiveFrom": "MERGE_READY1", "tag": "MergeReady"},
+        {"currentState": "ProcessingMR1", "event": "notify MR1 it is being processed",              "newState": "ProcessingMR1", "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "Processing"},
+        {"currentState": "ProcessingMR1", "event": "MR1 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "Merged"},
+        {"currentState": "Idle",          "event": "receives MergeReady from polecat2: claim MR2",   "newState": "ProcessingMR2", "isReceive": true, "receiveFrom": "MERGE_READY2", "tag": "MergeReady"},
+        {"currentState": "ProcessingMR2", "event": "notify MR2 it is being processed",              "newState": "ProcessingMR2", "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "Processing"},
+        {"currentState": "ProcessingMR2", "event": "MR2 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "Merged"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

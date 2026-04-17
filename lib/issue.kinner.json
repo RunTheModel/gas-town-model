@@ -1,0 +1,56 @@
+{
+  "name": "Issue",
+  "version": "0.1.0",
+  "description": "Library component. Models a work-item bead's IssueStatus dimension. Verified state machine (per gastown-src/internal/beads/status.go:65-77 and the convoy-lands monolith): Open -> Hooked (on receive Sling from Feeder) -> InProgress (when assigned Polecat reaches Working) -> Closed (when Polecat reaches Done). Issue and Polecat observe each other -- cyclic observe. Issue advances via observed Polecat state; Polecat advances via observed Issue state. The cycle is well-defined because each transition has a unique guard combination. The Sling channel kicks off the cycle; from there both actors drive each other through their lifecycle.",
+
+  "ports": {
+    "SLING": {
+      "direction": "in",
+      "description": "receives a sling assignment from Feeder. Advances Open -> Hooked. Tagged 'Sling' to match the Feeder's send."
+    },
+    "POLECAT_OBSERVE": {
+      "direction": "observe",
+      "variable": "polecatState",
+      "states": ["Working", "Done"],
+      "description": "observes the assigned polecat's state. Hooked -> InProgress fires when polecat = Working; InProgress -> Closed fires when polecat = Done."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Issue",
+      "owner": "The bead's work-item status. Lifecycle verified against beads/status.go:65-77 and the convoy-lands monolith. Open -> Hooked is the slung-by-feeder write. Hooked -> InProgress is the polecat-prime write (real gastown: polecat_spawn.go:404 SetState(StateWorking) AFTER SetAgentState('working') -- the asymmetric write order from beads-lifecycle.kinner.json). InProgress -> Closed is the bd.Close(hookedBeadID) call from done.go:1588. Other states (Blocked, Tombstone) deferred -- this component models the happy-path lifecycle.",
+      "initialState": "Open",
+      "states": ["Open", "Hooked", "InProgress", "Closed"],
+      "triples": [
+        {
+          "currentState": "Open",
+          "event": "feeder slings: issue gets hooked to a polecat (sling.go:918 hookBeadWithRetry)",
+          "newState": "Hooked",
+          "isReceive": true,
+          "receiveFrom": "SLING",
+          "tag": "Sling"
+        },
+        {
+          "currentState": "Hooked",
+          "event": "polecat starts working: issue advances to in-progress (polecat_spawn.go:404 SetState(StateWorking))",
+          "newState": "InProgress",
+          "guard": "polecatState = POLECAT_OBSERVE_Working"
+        },
+        {
+          "currentState": "InProgress",
+          "event": "polecat finishes (gt done): issue closes (done.go:1588 bd.Close(hookedBeadID))",
+          "newState": "Closed",
+          "guard": "polecatState = POLECAT_OBSERVE_Done"
+        },
+        {
+          "currentState": "Closed",
+          "event": "terminal",
+          "newState": "Closed"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

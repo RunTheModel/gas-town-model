@@ -1,0 +1,71 @@
+{
+  "name": "ConvoyLands",
+  "description": "Application spec. Full convoy-lands flow as pure composition. Zero inline actors. 14 component instances. MR advancement is Refinery-gated (not spontaneous) so NormalLandMeansWorkIntegrated is honest. Hook instances included -- Polecat's HOOK_IN port is part of the component, so Hook instances are part of every application that uses Polecat.",
+
+  "messageSet": ["Launch", "Land", "ForceLand", "ConvoyDone", "Sling", "MergeReady", "Processing", "Merged", "Clean", "PreCompact"],
+
+  "actors": [],
+
+  "components": [
+    {"use": "Mayor",    "as": "May",  "bind": {"LAUNCH": "Con.LAUNCH", "LAND": "Con.LAND", "CONVOY_DONE": "Con.CONVOY_DONE"}},
+    {"use": "Convoy",   "as": "Con",  "bind": {
+      "LAUNCH": "May.LAUNCH",
+      "LAND": "May.LAND",
+      "CONVOY_DONE": "May.CONVOY_DONE",
+      "ISS1_OBSERVE": "Iss1",
+      "ISS2_OBSERVE": "Iss2",
+      "MR1_OBSERVE": "Mr1",
+      "MR2_OBSERVE": "Mr2",
+      "POL1_OBSERVE": "Pol1",
+      "POL2_OBSERVE": "Pol2",
+      "LANDING_OBSERVE": "Lnd"
+    }},
+    {"use": "Feeder",   "as": "Fed",  "bind": {"SLING1": "Iss1.SLING", "SLING2": "Iss2.SLING", "CONVOY_OBSERVE": "Con"}},
+    {"use": "Refinery", "as": "Ref",  "bind": {
+      "MERGE_READY1": "Pol1.MERGE_READY",
+      "MERGE_READY2": "Pol2.MERGE_READY",
+      "MR_NOTIFY1": "Mr1.REFINERY_IN",
+      "MR_NOTIFY2": "Mr2.REFINERY_IN"
+    }},
+    {"use": "Landing",  "as": "Lnd",  "bind": {"CLEAN1": "Wt1.CLEAN", "CLEAN2": "Wt2.CLEAN", "CONVOY_OBSERVE": "Con", "WT1_OBSERVE": "Wt1", "WT2_OBSERVE": "Wt2"}},
+    {"use": "Issue",    "as": "Iss1", "bind": {"SLING": "Fed.SLING1", "POLECAT_OBSERVE": "Pol1"}},
+    {"use": "Issue",    "as": "Iss2", "bind": {"SLING": "Fed.SLING2", "POLECAT_OBSERVE": "Pol2"}},
+    {"use": "Polecat",  "as": "Pol1", "bind": {"SLING": "Fed",        "MERGE_READY": "Ref.MERGE_READY1", "HOOK_IN": "Hk1.AGENT", "ISSUE_OBSERVE": "Iss1"}},
+    {"use": "Polecat",  "as": "Pol2", "bind": {"SLING": "Fed",        "MERGE_READY": "Ref.MERGE_READY2", "HOOK_IN": "Hk2.AGENT", "ISSUE_OBSERVE": "Iss2"}},
+    {"use": "MR",       "as": "Mr1",  "bind": {"POLECAT_OBSERVE": "Pol1", "REFINERY_IN": "Ref.MR_NOTIFY1"}},
+    {"use": "MR",       "as": "Mr2",  "bind": {"POLECAT_OBSERVE": "Pol2", "REFINERY_IN": "Ref.MR_NOTIFY2"}},
+    {"use": "Worktree", "as": "Wt1",  "bind": {"CLEAN": "Lnd.CLEAN1"}},
+    {"use": "Worktree", "as": "Wt2",  "bind": {"CLEAN": "Lnd.CLEAN2"}},
+    {"use": "Hook",     "as": "Hk1",  "bind": {"AGENT": "Pol1.HOOK_IN"}},
+    {"use": "Hook",     "as": "Hk2",  "bind": {"AGENT": "Pol2.HOOK_IN"}}
+  ],
+
+  "invariants": [
+    {
+      "id": "NormalLandMeansWorkIntegrated",
+      "description": "CRITICAL. At Landed, both issues Closed and both MRs Merged. Honest because MR can only reach Merged via Refinery sending the Merged event.",
+      "expression": "Con.convoy # Con.Landed \\/ (Iss1.issue = Iss1.Closed /\\ Iss2.issue = Iss2.Closed /\\ Mr1.mR = Mr1.Merged /\\ Mr2.mR = Mr2.Merged)",
+      "severity": "critical"
+    },
+    {
+      "id": "PolecatsIdleAtLanding",
+      "description": "CRITICAL. At Landed, both polecats Idle.",
+      "expression": "Con.convoy # Con.Landed \\/ (Pol1.polecat = Pol1.Idle /\\ Pol2.polecat = Pol2.Idle)",
+      "severity": "critical"
+    },
+    {
+      "id": "WorktreeCleanupHappensOnLand",
+      "description": "CRITICAL. At any landed state, both worktrees Cleaned.",
+      "expression": "(Con.convoy # Con.Landed /\\ Con.convoy # Con.LandedForce) \\/ (Wt1.worktree = Wt1.Cleaned /\\ Wt2.worktree = Wt2.Cleaned)",
+      "severity": "critical"
+    },
+    {
+      "id": "ForceLandIsExplicit",
+      "description": "CRITICAL. LandedForce only via Mayor ForceLanding.",
+      "expression": "Con.convoy # Con.LandedForce \\/ May.mayor = May.ForceLanding \\/ May.mayor = May.Done",
+      "severity": "critical"
+    }
+  ],
+
+  "properties": []
+}

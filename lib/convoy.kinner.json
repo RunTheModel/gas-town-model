@@ -1,0 +1,83 @@
+{
+  "name": "Convoy",
+  "version": "0.1.0",
+  "description": "Library component. The convoy bead -- tracks the overall convoy lifecycle from Staged through Landed (or ForceLandPending -> LandedForce). The AllDone guard is the load-bearing cross-instance observation: convoy auto-closes only when ALL issues are Closed, ALL MRs are Merged, and ALL polecats are Idle. The convoy has 6 observe ports for a 2-issue configuration; N-issue generalization requires more ports (or a Kinner language feature for parameterized observe-port counts).",
+
+  "ports": {
+    "LAUNCH": {
+      "direction": "in",
+      "description": "receives Launch from Mayor. Tagged 'Launch'."
+    },
+    "LAND": {
+      "direction": "in",
+      "description": "receives Land or ForceLand from Mayor. Tagged 'Land' or 'ForceLand'."
+    },
+    "CONVOY_DONE": {
+      "direction": "out",
+      "description": "sends ConvoyDone to Mayor when all work is complete. Tagged 'ConvoyDone'."
+    },
+    "ISS1_OBSERVE": {
+      "direction": "observe",
+      "variable": "iss1State",
+      "states": ["Closed"],
+      "description": "observes issue 1 for the AllDone guard."
+    },
+    "ISS2_OBSERVE": {
+      "direction": "observe",
+      "variable": "iss2State",
+      "states": ["Closed"],
+      "description": "observes issue 2 for the AllDone guard."
+    },
+    "MR1_OBSERVE": {
+      "direction": "observe",
+      "variable": "mr1State",
+      "states": ["Merged"],
+      "description": "observes MR 1 for the AllDone guard."
+    },
+    "MR2_OBSERVE": {
+      "direction": "observe",
+      "variable": "mr2State",
+      "states": ["Merged"],
+      "description": "observes MR 2 for the AllDone guard."
+    },
+    "POL1_OBSERVE": {
+      "direction": "observe",
+      "variable": "pol1State",
+      "states": ["Idle"],
+      "description": "observes polecat 1 for the AllDone guard."
+    },
+    "POL2_OBSERVE": {
+      "direction": "observe",
+      "variable": "pol2State",
+      "states": ["Idle"],
+      "description": "observes polecat 2 for the AllDone guard."
+    },
+    "LANDING_OBSERVE": {
+      "direction": "observe",
+      "variable": "landingState",
+      "states": ["Done"],
+      "description": "observes Landing completion. Gates both Closed->Landed and ForceLandPending->LandedForce."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Convoy",
+      "owner": "Convoy bead lifecycle. Staged -> Open -> AllDone -> Closed -> Landed (normal). Open -> ForceLandPending -> LandedForce (force). Both landing paths gate on Landing = Done.",
+      "initialState": "Staged",
+      "states": ["Staged", "Open", "AllDone", "Closed", "ForceLandPending", "Landed", "LandedForce"],
+      "triples": [
+        {"currentState": "Staged",            "event": "Launch received from Mayor",                                   "newState": "Open",             "isReceive": true, "receiveFrom": "LAUNCH", "tag": "Launch"},
+        {"currentState": "Open",              "event": "all-done: all issues closed, MRs merged, polecats idle",       "newState": "AllDone",           "guard": "iss1State = ISS1_OBSERVE_Closed /\\ iss2State = ISS2_OBSERVE_Closed /\\ mr1State = MR1_OBSERVE_Merged /\\ mr2State = MR2_OBSERVE_Merged /\\ pol1State = POL1_OBSERVE_Idle /\\ pol2State = POL2_OBSERVE_Idle"},
+        {"currentState": "AllDone",           "event": "convoy reports complete to Mayor",                             "newState": "Closed",           "isSend": true, "sendTo": "CONVOY_DONE", "tag": "ConvoyDone"},
+        {"currentState": "Closed",            "event": "Land received: convoy lands normally",                         "newState": "Landed",           "isReceive": true, "receiveFrom": "LAND", "tag": "Land", "guard": "landingState = LANDING_OBSERVE_Done"},
+        {"currentState": "Open",              "event": "ForceLand received: convoy enters pending (cleanup first)",    "newState": "ForceLandPending", "isReceive": true, "receiveFrom": "LAND", "tag": "ForceLand"},
+        {"currentState": "ForceLandPending",  "event": "cleanup complete: convoy force-lands",                         "newState": "LandedForce",      "guard": "landingState = LANDING_OBSERVE_Done"},
+        {"currentState": "Landed",            "event": "terminal (normal)",                                            "newState": "Landed"},
+        {"currentState": "LandedForce",       "event": "terminal (force)",                                            "newState": "LandedForce"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}
