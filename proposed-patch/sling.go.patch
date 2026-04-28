@@ -1,0 +1,33 @@
+--- a/internal/cmd/sling.go
++++ b/internal/cmd/sling.go
+@@ -913,6 +913,28 @@ func runSling(cmd *cobra.Command, args []string) (retErr error) {
+ 	if assigneeLockErr != nil {
+ 		return fmt.Errorf("serializing hook write for %s: %w", targetAgent, assigneeLockErr)
+ 	}
+ 	defer assigneeUnlock()
++
++	// Issue #3768: enforce single-hooked-bead-per-(assignee, formula) invariant.
++	//
++	// The per-assignee lock above (gt-3114) serializes concurrent slings against
++	// the same agent. This step closes any existing hooked beads on the same
++	// (assignee, formula) tuple BEFORE we hook the new one, so the invariant
++	// "at most one hooked bead per (assignee, formula)" holds across the
++	// boundary. Without this, restarted/handed-off agents accumulate one hooked
++	// patrol mol per spawn -- the bug shape #3768 reports.
++	//
++	// The lock guarantees close-then-hook is atomic from the perspective of any
++	// concurrent sling on the same assignee. Plain (formula-less) slings skip
++	// this step (no formula key to enforce against).
++	if formulaName != "" {
++		bd := beads.New(townRoot)
++		if closed, err := bd.CloseSameFormulaHookedSiblings(targetAgent, formulaName); err != nil {
++			return fmt.Errorf("closing prior same-formula hooks for %s: %w", targetAgent, err)
++		} else if len(closed) > 0 {
++			fmt.Printf("%s Closed %d prior hooked bead(s) for formula %s on %s: %v\n",
++				style.Bold.Render("→"), len(closed), formulaName, targetAgent, closed)
++		}
++	}
++
+ 	hookDir := beads.ResolveHookDir(townRoot, beadID, hookWorkDir)
+ 	if err := hookBeadWithRetry(beadID, targetAgent, hookDir); err != nil {
+ 		return err
