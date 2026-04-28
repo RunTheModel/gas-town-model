@@ -1,0 +1,96 @@
+{
+  "name": "SlingWithCheck",
+  "version": "0.1.0",
+  "description": "Library component. Models the PROPOSED fix for #3768: `gt sling <formula> <agent>` with a precondition close-step. Real-source intent: between sling.go:912 (lock acquire) and sling.go:918 (hookBeadWithRetry), insert a `bd.Close(siblings, formula)` call that closes any same-formula Hooked beads on the same assignee. The new bead row then becomes the only Hooked bead for that (assignee, formula) tuple.\n\nFlow: Idle -> AcquiringLock (send Acquire on lock-acquire) -> ClosingSibling (receive Granted, send Close to sibling Bead) -> Hooking (gated on sibling no longer Hooked: observe sibling.status != 1) -> Releasing (send Sling to HOOK_OUT) -> Done (send Release).\n\nThe ClosingSibling -> Hooking gate is the load-bearing piece: TLC explores branches where Sling sends Close and the Sling's own Hooking transition fires before the Bead processes the Close. Without the gate, an interleaving exists where both same-formula beads are momentarily Hooked. The gate forces Sling to wait for the sibling's status update before sending Sling to its target.\n\nThis component is paired with BeadCloseable (lib/beadcloseable.kinner.json) -- the Bead variant with a CLOSE in-port that closes a Hooked bead atomically.",
+
+  "ports": {
+    "INVOKE": {
+      "direction": "in",
+      "description": "patrol or external trigger invokes the sling subcommand. Tagged 'Sling'."
+    },
+    "LOCK_ACQUIRE_OUT": {
+      "direction": "out",
+      "description": "send Acquire to the per-assignee lock. Tagged 'Acquire'."
+    },
+    "LOCK_GRANTED_IN": {
+      "direction": "in",
+      "description": "receive Granted from the per-assignee lock once it's free. Tagged 'Granted'."
+    },
+    "LOCK_RELEASE_OUT": {
+      "direction": "out",
+      "description": "release the lock after the new bead row has been hooked. Tagged 'Release'."
+    },
+    "CLOSE_OUT": {
+      "direction": "out",
+      "description": "send Close to the same-formula sibling Bead BEFORE hooking the target. Tagged 'Close'. Real: `bd.Close(siblings, formula)` between lock-acquire and hookBeadWithRetry."
+    },
+    "SIBLING_OBSERVE": {
+      "direction": "observe",
+      "variable": "siblingState",
+      "states": ["Open", "Hooked", "Closed"],
+      "description": "observe the same sibling Bead's lifecycle state. Sling proceeds from ClosingSibling to Hooking only when state != Hooked (sibling is Open or Closed; safe to introduce a new same-formula Hooked bead)."
+    },
+    "TARGET_OBSERVE": {
+      "direction": "observe",
+      "variable": "targetState",
+      "states": ["Open", "Hooked", "Closed"],
+      "description": "observe the target Bead's lifecycle state. Sling waits in HookSent until target is observed Hooked before releasing the lock -- mirrors real-world synchronous hookBeadWithRetry, which returns only after the database write commits. Without this gate, the Sling could release the lock while the hook message is still in flight, letting the next Sling acquire and observe the target as not-yet-Hooked."
+    },
+    "HOOK_OUT": {
+      "direction": "out",
+      "description": "fires the hook event at the target bead. Tagged 'Sling'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "SlingWithCheck",
+      "owner": "gt sling subcommand WITH proposed fix. Seven states: Idle, AcquiringLock, ClosingSibling, Hooking, HookSent, Releasing, Done. The HookSent state is the synchronization gate -- Sling waits for the target to actually transition to Hooked (TARGET_OBSERVE) before releasing the lock, mirroring real synchronous hookBeadWithRetry semantics.",
+      "initialState": "Idle",
+      "states": ["Idle", "AcquiringLock", "ClosingSibling", "Hooking", "HookSent", "Releasing", "Done"],
+      "triples": [
+        {
+          "currentState": "Idle",
+          "event": "patrol invokes sling: send Acquire (sling.go:912)",
+          "newState": "AcquiringLock",
+          "isReceive": true, "receiveFrom": "INVOKE", "tag": "Sling",
+          "isSend": true, "sendTo": "LOCK_ACQUIRE_OUT", "sendTag": "Acquire"
+        },
+        {
+          "currentState": "AcquiringLock",
+          "event": "lock granted: send Close to sibling (proposed precondition step)",
+          "newState": "ClosingSibling",
+          "isReceive": true, "receiveFrom": "LOCK_GRANTED_IN", "tag": "Granted",
+          "isSend": true, "sendTo": "CLOSE_OUT", "sendTag": "Close"
+        },
+        {
+          "currentState": "ClosingSibling",
+          "event": "sibling no longer hooked: safe to hook target",
+          "newState": "Hooking",
+          "guard": "siblingState # SIBLING_OBSERVE_Hooked"
+        },
+        {
+          "currentState": "Hooking",
+          "event": "hookBeadWithRetry on target bead (sling.go:918)",
+          "newState": "HookSent",
+          "isSend": true, "sendTo": "HOOK_OUT", "tag": "Sling"
+        },
+        {
+          "currentState": "HookSent",
+          "event": "target now Hooked: hook is committed, safe to release lock",
+          "newState": "Releasing",
+          "guard": "targetState = TARGET_OBSERVE_Hooked"
+        },
+        {
+          "currentState": "Releasing",
+          "event": "release lock (sling.go: implicit on function return)",
+          "newState": "Done",
+          "isSend": true, "sendTo": "LOCK_RELEASE_OUT", "tag": "Release"
+        },
+        {"currentState": "Done", "event": "terminal", "newState": "Done"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

@@ -1,0 +1,113 @@
+{
+  "name": "Sling3768Fix",
+  "messageSet": ["PreCompact", "RunCycle", "HandoffMail", "Respawn", "BootSuccessor", "ResumeMail", "Sling", "Acquire", "Granted", "Release", "Close"],
+  "description": "Issue #3768 PROPOSED FIX. Demonstrates that adding a precondition close-step to `gt sling` enforces the per-formula singleton. Pairs with sling-3768-bug.kinner.json (the unfixed code, which TLC-violates HookedSingleton).\n\nProposed change to sling.go: between line 912 (tryAcquireSlingAssigneeLock) and line 918 (hookBeadWithRetry), insert\n\n  bd.CloseSameFormulaHooked(assignee, formula)\n\nthat synchronously closes any existing Hooked beads of the same (assignee, formula). The new bead row hooked at line 918 then becomes the only Hooked bead for that tuple.\n\nMODEL TOPOLOGY:\n  - 2 same-formula BeadCloseable instances (Bead1, Bead2; both formulaId=1)\n  - 2 SlingWithCheck instances (Sl1 targets Bead1 + closes Bead2; Sl2 targets Bead2 + closes Bead1)\n  - 2 Patrol instances (Ptl1 invokes Sl1; Ptl2 invokes Sl2)\n  - AssigneeLock with 2 clients (each Sling is a client)\n  - Multi-cycle substrate (Hook+Agent+HandoffCycle+Mailbox+Pane all loop, maxCycles=2)\n\nKEY GATE: SlingWithCheck transitions ClosingSibling -> Hooking only when sibling.status != 1 (i.e., the sibling has been observed Open or Closed). This forces the Sling to wait for the Bead's CLOSE processing before hooking its target. TLC explores all interleavings; the gate is what makes the fix airtight against the race between 'Sling sent Close' and 'Sling sends new Sling.'\n\nVerification: HookedSingleton holds across the full state space. Run TLC with -deadlock; expect no invariant violation.\n\nWhy not 3 beads (matching sling-3768-bug.kinner.json's 3-Bead topology): the fix's correctness is per-formula. Two same-formula beads is sufficient to demonstrate the singleton holds; adding a third same-formula bead just multiplies the proof. The bug spec's three-bead topology (with Bead3 as a cross-formula control) was for proving the invariant distinguishes formulas; here we trust that result.\n\nReal sources: sling.go:912-918 (the call site to extend); internal/beads/operations.go (where bd.Close lives in real gastown).",
+
+  "actors": [],
+
+  "components": [
+    {"use": "Hook", "as": "Hk", "fairness": "weak",
+     "options": {"maxCycles": 2},
+     "bind": {
+       "AGENT":         "Ag.HOOK_FIRES",
+       "AGENT_OBSERVE": "Ag"
+     }},
+
+    {"use": "Agent", "as": "Ag", "fairness": "weak",
+     "bind": {
+       "HOOK_FIRES":      "Hk.AGENT",
+       "TRIGGER_CYCLE":   "Cyc.TRIGGER",
+       "PRIME_FROM_MAIL": "Mb.DELIVER"
+     }},
+
+    {"use": "HandoffCycle", "as": "Cyc", "fairness": "weak",
+     "bind": {
+       "TRIGGER":         "Ag.TRIGGER_CYCLE",
+       "SAVE_MAIL":       "Mb.SAVE",
+       "MAILBOX_OBSERVE": "Mb",
+       "RESPAWN_PANE":    "Pn.RESPAWN_REQUEST"
+     }},
+
+    {"use": "Mailbox", "as": "Mb", "fairness": "weak",
+     "bind": {
+       "SAVE":         "Cyc.SAVE_MAIL",
+       "BOOT_TRIGGER": "Pn.BOOT_SUCCESSOR",
+       "DELIVER":      "Ag.PRIME_FROM_MAIL"
+     }},
+
+    {"use": "Pane", "as": "Pn", "fairness": "weak",
+     "bind": {
+       "RESPAWN_REQUEST": "Cyc.RESPAWN_PANE",
+       "BOOT_SUCCESSOR":  "Mb.BOOT_TRIGGER"
+     }},
+
+    {"use": "AssigneeLock2", "as": "Lock", "fairness": "weak",
+     "bind": {
+       "ACQUIRE_1": "Sl1.LOCK_ACQUIRE_OUT",
+       "GRANTED_1": "Sl1.LOCK_GRANTED_IN",
+       "RELEASE_1": "Sl1.LOCK_RELEASE_OUT",
+       "ACQUIRE_2": "Sl2.LOCK_ACQUIRE_OUT",
+       "GRANTED_2": "Sl2.LOCK_GRANTED_IN",
+       "RELEASE_2": "Sl2.LOCK_RELEASE_OUT"
+     }},
+
+    {"use": "Patrol", "as": "Ptl1", "fairness": "weak",
+     "bind": {
+       "AGENT_OBSERVE": "Ag",
+       "INVOKE_SLING":  "Sl1.INVOKE"
+     }},
+
+    {"use": "SlingWithCheck", "as": "Sl1", "fairness": "weak",
+     "bind": {
+       "INVOKE":           "Ptl1.INVOKE_SLING",
+       "LOCK_ACQUIRE_OUT": "Lock.ACQUIRE_1",
+       "LOCK_GRANTED_IN":  "Lock.GRANTED_1",
+       "LOCK_RELEASE_OUT": "Lock.RELEASE_1",
+       "CLOSE_OUT":        "Bead2.CLOSE",
+       "SIBLING_OBSERVE":  "Bead2",
+       "TARGET_OBSERVE":   "Bead1",
+       "HOOK_OUT":         "Bead1.HOOK"
+     }},
+
+    {"use": "Patrol", "as": "Ptl2", "fairness": "weak",
+     "bind": {
+       "AGENT_OBSERVE": "Ag",
+       "INVOKE_SLING":  "Sl2.INVOKE"
+     }},
+
+    {"use": "SlingWithCheck", "as": "Sl2", "fairness": "weak",
+     "bind": {
+       "INVOKE":           "Ptl2.INVOKE_SLING",
+       "LOCK_ACQUIRE_OUT": "Lock.ACQUIRE_2",
+       "LOCK_GRANTED_IN":  "Lock.GRANTED_2",
+       "LOCK_RELEASE_OUT": "Lock.RELEASE_2",
+       "CLOSE_OUT":        "Bead1.CLOSE",
+       "SIBLING_OBSERVE":  "Bead1",
+       "TARGET_OBSERVE":   "Bead2",
+       "HOOK_OUT":         "Bead2.HOOK"
+     }},
+
+    {"use": "BeadCloseable", "as": "Bead1", "fairness": "weak",
+     "options": {"formulaId": 1},
+     "bind": {
+       "HOOK":  "Sl1.HOOK_OUT",
+       "CLOSE": "Sl2.CLOSE_OUT"
+     }},
+
+    {"use": "BeadCloseable", "as": "Bead2", "fairness": "weak",
+     "options": {"formulaId": 1},
+     "bind": {
+       "HOOK":  "Sl2.HOOK_OUT",
+       "CLOSE": "Sl1.CLOSE_OUT"
+     }}
+  ],
+
+  "invariants": [
+    {
+      "id": "HookedSingleton",
+      "description": "CRITICAL. Per #3768: at most one bead of any (assignee, formula) tuple is in Hooked status at any time. Should HOLD with the proposed fix in place. Both beads share formulaId=1; the SlingWithCheck close-step + observe-gate ensures no interleaving exists where both reach Hooked simultaneously.",
+      "expression": "Bead1.beadCloseableState # Bead1.Hooked \\/ Bead2.beadCloseableState # Bead2.Hooked",
+      "severity": "critical"
+    }
+  ]
+}

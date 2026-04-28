@@ -1,0 +1,40 @@
+{
+  "name": "AssigneeLock2",
+  "version": "0.1.0",
+  "description": "Two-client variant of AssigneeLock (lib/assigneelock.kinner.json). Same shape, fewer clients. Used by sling-3768-fix.kinner.json which only needs two contending Slings.\n\nIdentical Free/HeldBy1/HeldBy2 mutex protocol; per-client ACQUIRE/GRANTED/RELEASE ports carry holder identity.\n\nSeparate file rather than parameterizing AssigneeLock with a client count because Kinner port arrays are not currently supported -- the port set is fixed at component-definition time.",
+
+  "ports": {
+    "ACQUIRE_1": {"direction": "in",  "description": "client 1 requests the lock"},
+    "ACQUIRE_2": {"direction": "in",  "description": "client 2 requests the lock"},
+    "GRANTED_1": {"direction": "out", "description": "client 1 has acquired the lock"},
+    "GRANTED_2": {"direction": "out", "description": "client 2 has acquired the lock"},
+    "RELEASE_1": {"direction": "in",  "description": "client 1 releases the lock"},
+    "RELEASE_2": {"direction": "in",  "description": "client 2 releases the lock"}
+  },
+
+  "actors": [
+    {
+      "name": "AssigneeLock2",
+      "owner": "Per-assignee sling lock with two clients. Free / HeldBy1 / HeldBy2.",
+      "initialState": "Free",
+      "states": ["Free", "HeldBy1", "HeldBy2"],
+      "triples": [
+        {"currentState": "Free", "event": "client 1 acquires", "newState": "HeldBy1",
+         "isReceive": true, "receiveFrom": "ACQUIRE_1", "tag": "Acquire",
+         "isSend": true, "sendTo": "GRANTED_1", "sendTag": "Granted"},
+
+        {"currentState": "Free", "event": "client 2 acquires", "newState": "HeldBy2",
+         "isReceive": true, "receiveFrom": "ACQUIRE_2", "tag": "Acquire",
+         "isSend": true, "sendTo": "GRANTED_2", "sendTag": "Granted"},
+
+        {"currentState": "HeldBy1", "event": "client 1 releases", "newState": "Free",
+         "isReceive": true, "receiveFrom": "RELEASE_1", "tag": "Release"},
+
+        {"currentState": "HeldBy2", "event": "client 2 releases", "newState": "Free",
+         "isReceive": true, "receiveFrom": "RELEASE_2", "tag": "Release"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

@@ -245,3 +245,39 @@ A re-runnable TLC pipeline that:
 The fix model is the natural next step after defense work; it's
 where we *demonstrate* the proposed sling.go change, rather than
 just argue for it.
+
+## Status 2026-04-28
+
+Bug spec (sling-3768-bug.kinner.json) and fix spec
+(sling-3768-fix.kinner.json) both shipped:
+
+- **Bug**: HookedSingleton TLC-violates at depth 30, ~5s, formula-keyed
+  invariant fires precisely on the same-formula pair (Bead1, Bead2)
+  while the cross-formula Bead3 remains a non-violating control.
+- **Fix**: HookedSingleton holds across the full state space (60,984
+  distinct states explored, depth 80, ~6s). The proposed
+  sling.go change inserts a precondition close-step between the lock
+  acquire and hookBeadWithRetry, plus a synchronous wait for the hook
+  to land before releasing the lock (mirrors real synchronous DB
+  write).
+
+Two new library components for the fix:
+- `lib/beadcloseable.kinner.json` -- Bead variant with HOOK + CLOSE
+  ports and enum-state lifecycle (Open / Hooked / Closed) so
+  SlingWithCheck can observe sibling status.
+- `lib/slingwithcheck.kinner.json` -- 7-state Sling with the
+  precondition close-step and the hook-landed gate before lock
+  release.
+
+Plus `lib/assigneelock2.kinner.json` -- 2-client variant of
+AssigneeLock for the fix model's two-Sling topology.
+
+Modeling lessons (filed as earhart backlog items for future work):
+- Two observe ports on the same actor cannot share a `variable` name
+  (they collide in the observer's TLA+ namespace) -- discovered when
+  SlingWithCheck needed both sibling and target observation. Workaround:
+  give each observe a unique local variable name.
+- Observe ports don't expose typed-int variables across actors; only
+  the actor's auto-emitted state-variable is observable. BeadCloseable
+  uses enum states for status because of this. Filed as
+  earhart/backlog/152-typed-enum-variables.md.

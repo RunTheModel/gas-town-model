@@ -1,0 +1,67 @@
+{
+  "name": "BeadCloseable",
+  "version": "0.2.0",
+  "description": "Library component. Variant of Bead with HOOK and CLOSE in-ports. Uses enum status states (Open / Hooked / Closed) instead of typed-int because Kinner observe-port semantics don't currently expose typed-int variables to a remote observer -- the SlingWithCheck component needs to observe a sibling Bead's state to gate its hooking, which requires enum states.\n\nThe original Bead component (lib/bead.kinner.json) uses typed-int status for the bug spec where status is consulted only by the actor itself (in its own triples) and by the project-level invariant. BeadCloseable uses enum status because the SlingWithCheck observe-gate needs cross-actor visibility.\n\nUsed by sling-3768-fix.kinner.json (the proposed-fix model). The CLOSE port is idempotent: a Close on an already-Open or already-Closed bead is consumed but doesn't transition state. Only a Hooked bead transitions to Closed on Close.",
+
+  "ports": {
+    "HOOK": {
+      "direction": "in",
+      "description": "receives a hook event when a sling targets this bead. Tagged 'Sling'. Only fires when this bead is in state Open."
+    },
+    "CLOSE": {
+      "direction": "in",
+      "description": "receives a close event from a sibling sling. Tagged 'Close'. Transitions Hooked -> Closed; consumed as no-op on Open or Closed."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "BeadCloseable",
+      "owner": "Single bead's lifecycle as enum states (Open / Hooked / Closed) plus a typed-int formula identifier for cross-formula invariant disambiguation.",
+      "initialState": "Open",
+      "options": {
+        "formulaId": {"type": "integer", "default": 1}
+      },
+      "variables": {
+        "formula": {"type": "integer", "bound": [0, 9], "default": "formulaId"}
+      },
+      "states": ["Open", "Hooked", "Closed"],
+      "triples": [
+        {
+          "currentState": "Open",
+          "event": "sling targets this bead: open -> hooked",
+          "newState": "Hooked",
+          "isReceive": true,
+          "receiveFrom": "HOOK",
+          "tag": "Sling"
+        },
+        {
+          "currentState": "Hooked",
+          "event": "sibling sling closes this hooked bead: hooked -> closed",
+          "newState": "Closed",
+          "isReceive": true,
+          "receiveFrom": "CLOSE",
+          "tag": "Close"
+        },
+        {
+          "currentState": "Open",
+          "event": "close on open bead consumed but no-op",
+          "newState": "Open",
+          "isReceive": true,
+          "receiveFrom": "CLOSE",
+          "tag": "Close"
+        },
+        {
+          "currentState": "Closed",
+          "event": "close on already-closed bead consumed but no-op",
+          "newState": "Closed",
+          "isReceive": true,
+          "receiveFrom": "CLOSE",
+          "tag": "Close"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}
