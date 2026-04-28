@@ -1,7 +1,7 @@
 {
   "name": "Mailbox",
-  "version": "0.1.0",
-  "description": "Library component. Models the bead store as the persistent handoff mailbox. The mailbox holds the agent's saved state across a respawn -- the single source of truth bridging the predecessor agent's death and the successor's boot. Real implementation: sendHandoffMail (internal/cmd/handoff.go:515) writes a self-addressed bead with the auto-collected state; the successor's gt prime --hook reads it via runPrimeCompactResume (prime.go:167-170).\n\nThe mailbox sequences delivery: it persists mail when the cycle saves, but only delivers AFTER the pane has respawned and signaled that the successor process exists. This captures the substrate ordering -- the mail can't be read by a process that hasn't booted yet.",
+  "version": "0.2.0",
+  "description": "Library component. Models the bead store as the persistent handoff mailbox. The mailbox holds the agent's saved state across a respawn -- the single source of truth bridging the predecessor agent's death and the successor's boot. Real implementation: sendHandoffMail (internal/cmd/handoff.go:515) writes a self-addressed bead with the auto-collected state; the successor's gt prime --hook reads it via runPrimeCompactResume (prime.go:167-170).\n\nThe mailbox sequences delivery: it persists mail when the cycle saves, but only delivers AFTER the pane has respawned and signaled that the successor process exists. This captures the substrate ordering -- the mail can't be read by a process that hasn't booted yet.\n\nv0.2 (defense-doc P2.4): mailbox now loops Delivered -> NoMail so subsequent substrate cycles can persist fresh mail.",
 
   "ports": {
     "SAVE": {
@@ -21,7 +21,7 @@
   "actors": [
     {
       "name": "Mailbox",
-      "owner": "Persistent state-handoff store. Spec-side abstraction of the beads database row whose life spans the pane respawn (the only state that survives the kill).",
+      "owner": "Persistent state-handoff store. Spec-side abstraction of the beads database row whose life spans the pane respawn (the only state that survives the kill). Loops Delivered -> NoMail so multi-cycle traces can run.",
       "initialState": "NoMail",
       "states": ["NoMail", "Persisted", "BootRequested", "Delivered"],
       "triples": [
@@ -51,8 +51,8 @@
         },
         {
           "currentState": "Delivered",
-          "event": "terminal: mail consumed (this model covers one cycle)",
-          "newState": "Delivered"
+          "event": "mail consumed; reset for next cycle",
+          "newState": "NoMail"
         }
       ]
     }

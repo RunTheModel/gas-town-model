@@ -1,0 +1,50 @@
+{
+  "name": "AssigneeLock",
+  "version": "0.2.0",
+  "description": "Models gastown's per-assignee sling lock (sling.go:912 tryAcquireSlingAssigneeLock). Three-client mutex for contending Slings. Each client owns its own ACQUIRE / GRANTED / RELEASE port pair, so the port-of-arrival carries the holder's identity -- no payload routing needed. State Free / HeldBy1 / HeldBy2 / HeldBy3 tracks the holder. RELEASE_N is only enabled when the lock is in HeldByN.\n\nv0.2: extended from 2 clients to 3 clients to support the multi-bead, multi-formula composition (defense-doc P2.5). The lock is keyed by assignee, not by formula -- all slings on the same assignee share this lock regardless of formula. Three clients = three concurrent contenders.\n\nModeled after kinner-stdlib's Mutex (experiments/concurrency/lib/Mutex.kinner.json) -- this is the same shape with gastown-specific naming and one extra client. The defense-doc P1.2 demonstrates that even with the lock serializing contenders, the singleton-by-formula bug still fires; the lock is not the answer.",
+
+  "ports": {
+    "ACQUIRE_1": {"direction": "in",  "description": "client 1 requests the lock"},
+    "ACQUIRE_2": {"direction": "in",  "description": "client 2 requests the lock"},
+    "ACQUIRE_3": {"direction": "in",  "description": "client 3 requests the lock"},
+    "GRANTED_1": {"direction": "out", "description": "client 1 has acquired the lock"},
+    "GRANTED_2": {"direction": "out", "description": "client 2 has acquired the lock"},
+    "GRANTED_3": {"direction": "out", "description": "client 3 has acquired the lock"},
+    "RELEASE_1": {"direction": "in",  "description": "client 1 releases the lock"},
+    "RELEASE_2": {"direction": "in",  "description": "client 2 releases the lock"},
+    "RELEASE_3": {"direction": "in",  "description": "client 3 releases the lock"}
+  },
+
+  "actors": [
+    {
+      "name": "AssigneeLock",
+      "owner": "Per-assignee sling lock. Free / HeldBy1 / HeldBy2 / HeldBy3.",
+      "initialState": "Free",
+      "states": ["Free", "HeldBy1", "HeldBy2", "HeldBy3"],
+      "triples": [
+        {"currentState": "Free", "event": "client 1 acquires", "newState": "HeldBy1",
+         "isReceive": true, "receiveFrom": "ACQUIRE_1", "tag": "Acquire",
+         "isSend": true, "sendTo": "GRANTED_1", "sendTag": "Granted"},
+
+        {"currentState": "Free", "event": "client 2 acquires", "newState": "HeldBy2",
+         "isReceive": true, "receiveFrom": "ACQUIRE_2", "tag": "Acquire",
+         "isSend": true, "sendTo": "GRANTED_2", "sendTag": "Granted"},
+
+        {"currentState": "Free", "event": "client 3 acquires", "newState": "HeldBy3",
+         "isReceive": true, "receiveFrom": "ACQUIRE_3", "tag": "Acquire",
+         "isSend": true, "sendTo": "GRANTED_3", "sendTag": "Granted"},
+
+        {"currentState": "HeldBy1", "event": "client 1 releases", "newState": "Free",
+         "isReceive": true, "receiveFrom": "RELEASE_1", "tag": "Release"},
+
+        {"currentState": "HeldBy2", "event": "client 2 releases", "newState": "Free",
+         "isReceive": true, "receiveFrom": "RELEASE_2", "tag": "Release"},
+
+        {"currentState": "HeldBy3", "event": "client 3 releases", "newState": "Free",
+         "isReceive": true, "receiveFrom": "RELEASE_3", "tag": "Release"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

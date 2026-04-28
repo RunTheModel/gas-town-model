@@ -1,7 +1,7 @@
 {
   "name": "Pane",
-  "version": "0.1.0",
-  "description": "Library component. Models a tmux pane as the substrate that hosts the LLM session. The pane is what survives the agent's death: t.RespawnPane (internal/cmd/handoff.go:591) is the atomic kill-and-start primitive. Before the respawn, handoff sets `remain-on-exit` so the pane survives process death (handoff.go:571), then ClearHistory clears scrollback (handoff.go:576), then RespawnPane kills the current process and starts a fresh one with the rebuilt restart command (built with --continue so the new Claude resumes the conversation).",
+  "version": "0.2.0",
+  "description": "Library component. Models a tmux pane as the substrate that hosts the LLM session. The pane is what survives the agent's death: t.RespawnPane (internal/cmd/handoff.go:591) is the atomic kill-and-start primitive. Before the respawn, handoff sets `remain-on-exit` so the pane survives process death (handoff.go:571), then ClearHistory clears scrollback (handoff.go:576), then RespawnPane kills the current process and starts a fresh one with the rebuilt restart command (built with --continue so the new Claude resumes the conversation).\n\nv0.2 (defense-doc P2.4): the pane now loops AlivePostRespawn -> Alive so subsequent cycles can respawn again. AlivePostRespawn becomes the steady state between cycles; Alive is reached briefly at t=0 and again after each cycle's respawn settles.",
 
   "ports": {
     "RESPAWN_REQUEST": {
@@ -17,7 +17,7 @@
   "actors": [
     {
       "name": "Pane",
-      "owner": "Tmux pane lifecycle around handoff. Alive (predecessor running) -> Respawning (killing predecessor, starting successor) -> AlivePostRespawn (successor running). The kill is atomic with the start (RespawnPane is one operation, not kill-then-start).",
+      "owner": "Tmux pane lifecycle around handoff. Alive (predecessor running) -> Respawning (killing predecessor, starting successor) -> AlivePostRespawn (successor running) -> Alive (loop, ready for next cycle's respawn).",
       "initialState": "Alive",
       "states": ["Alive", "Respawning", "AlivePostRespawn"],
       "triples": [
@@ -39,8 +39,8 @@
         },
         {
           "currentState": "AlivePostRespawn",
-          "event": "terminal: pane is alive with the successor (this model covers one cycle)",
-          "newState": "AlivePostRespawn"
+          "event": "pane settles into running state, ready for next cycle's respawn (loop)",
+          "newState": "Alive"
         }
       ]
     }

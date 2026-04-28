@@ -1,7 +1,7 @@
 {
   "name": "Agent",
-  "version": "0.1.0",
-  "description": "Library component. Models the substrate view of an LLM session (Claude Code, Pi, Codex) running in a tmux pane, captured across one context-cycle boundary. Three states: Active (predecessor doing work), Compacting (PreCompact fired, runtime is invoking the cycle command, predecessor is about to die), Resumed (successor read the handoff mail via gt prime --hook and is back at work).\n\nThe Active->Compacting->Resumed shape compresses the kill+respawn into a single observable transition: from the model's perspective, the agent is the same actor that goes through compaction. Real implementation distinguishes predecessor PID from successor PID, but for the substrate protocol the only thing that matters is whether mail safely persisted before the kill -- which is what the composition's invariants verify.\n\nReal implementation: hooks/config.go DefaultOverrides registers crew PreCompact -> 'gt handoff --cycle --reason compaction'. The hook fires the cycle subprocess (handoff.go:455-591) which respawns the pane (handoff.go:591). The new pane runs the SessionStart hook which is `gt prime --hook`; checkHandoffMarker (prime.go:138) detects the marker and runPrimeCompactResume injects the mail context (prime.go:167-170).",
+  "version": "0.2.0",
+  "description": "Library component. Models the substrate view of an LLM session (Claude Code, Pi, Codex) running in a tmux pane, captured across context-cycle boundaries.\n\nv0.2 (defense-doc P2.4): Agent now loops Resumed -> Active so multiple substrate cycles can be observed in one TLC run. Three states: Active (predecessor doing work), Compacting (PreCompact fired, runtime is invoking the cycle command), Resumed (successor read the handoff mail via gt prime --hook). After Resumed, the agent transitions back to Active to await the next PreCompact.\n\nThe Active->Compacting->Resumed shape compresses the kill+respawn into a single observable transition: from the model's perspective, the agent is the same actor that goes through compaction. Real implementation distinguishes predecessor PID from successor PID, but for the substrate protocol the only thing that matters is whether mail safely persisted before the kill -- which is what the composition's invariants verify.\n\nReal implementation: hooks/config.go DefaultOverrides registers crew PreCompact -> 'gt handoff --cycle --reason compaction'. The hook fires the cycle subprocess (handoff.go:455-591) which respawns the pane (handoff.go:591). The new pane runs the SessionStart hook which is `gt prime --hook`; checkHandoffMarker (prime.go:138) detects the marker and runPrimeCompactResume injects the mail context (prime.go:167-170).",
 
   "ports": {
     "HOOK_FIRES": {
@@ -21,7 +21,7 @@
   "actors": [
     {
       "name": "Agent",
-      "owner": "Substrate-layer LLM session, captured across one cycle. Active is the predecessor; Resumed is the successor; Compacting is the moment the predecessor's runtime fires the cycle command and the agent is about to die. Sequencing the kill+respawn+boot into one Compacting->Resumed edge keeps the spec focused on the substrate protocol (mail safety) without modeling tmux mechanics state-by-state.",
+      "owner": "Substrate-layer LLM session, looped across cycles. Active is the working state; Compacting is the moment the runtime fires the cycle command; Resumed is post-respawn. After Resumed the agent loops to Active to receive the next PreCompact (multi-cycle support, defense-doc P2.4).",
       "initialState": "Active",
       "states": ["Active", "Compacting", "Resumed"],
       "triples": [
@@ -48,6 +48,11 @@
           "isReceive": true,
           "receiveFrom": "PRIME_FROM_MAIL",
           "tag": "ResumeMail"
+        },
+        {
+          "currentState": "Resumed",
+          "event": "agent works for a while, ready for next cycle (unconditional loop back to Active)",
+          "newState": "Active"
         }
       ]
     }

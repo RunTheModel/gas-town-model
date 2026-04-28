@@ -1,7 +1,7 @@
 {
   "name": "HandoffCycle",
-  "version": "0.1.0",
-  "description": "Library component. Models `gt handoff --cycle` (internal/cmd/handoff.go:455-591), the substrate command that does session succession. Triggered by a PreCompact hook firing the cycle command as a subprocess. The two ordered substrate actions modeled here are: persist handoff mail, then respawn the tmux pane. The pane respawn atomically kills the current agent and starts a fresh one; the new agent's SessionStart hook reads the mail to resume.\n\nThe ordering matters for correctness: mail must be persisted BEFORE the pane respawn (else the new agent boots with no work). The real code makes mail-persist fatal-on-error (handoff.go:515-526) for exactly this reason -- silent failure would leave the next session with an empty hook.\n\nElided from this cut: the handoff marker file (handoff.go:533-541). The marker is an optimization signal that lets gt prime --hook take a lighter resume path (runPrimeCompactResume) instead of a full setupPrimeSession; both paths read the same mail. The marker is not a correctness gate, so we omit it for spec clarity.",
+  "version": "0.2.0",
+  "description": "Library component. Models `gt handoff --cycle` (internal/cmd/handoff.go:455-591), the substrate command that does session succession. Triggered by a PreCompact hook firing the cycle command as a subprocess. The two ordered substrate actions modeled here are: persist handoff mail, then respawn the tmux pane.\n\nThe ordering matters for correctness: mail must be persisted BEFORE the pane respawn (else the new agent boots with no work). The real code makes mail-persist fatal-on-error (handoff.go:515-526) for exactly this reason -- silent failure would leave the next session with an empty hook.\n\nv0.2 (defense-doc P2.4): the cycle now loops -- after RespawnRequested, transitions back to Idle ready for the next PreCompact.\n\nElided: the handoff marker file (handoff.go:533-541). The marker is an optimization signal that lets gt prime --hook take a lighter resume path (runPrimeCompactResume) instead of a full setupPrimeSession; both paths read the same mail. The marker is not a correctness gate, so we omit it for spec clarity.",
 
   "ports": {
     "TRIGGER": {
@@ -27,7 +27,7 @@
   "actors": [
     {
       "name": "HandoffCycle",
-      "owner": "Substrate session-succession driver. Three observable transitions per cycle: trigger (run as subprocess), save mail, request respawn.",
+      "owner": "Substrate session-succession driver. Three observable transitions per cycle: trigger (run as subprocess), save mail, request respawn. After respawn, loops to Idle for the next PreCompact (defense-doc P2.4).",
       "initialState": "Idle",
       "states": ["Idle", "MailPending", "MailSent", "MailConfirmed", "RespawnRequested"],
       "triples": [
@@ -51,7 +51,7 @@
           "currentState": "MailSent",
           "event": "wait for Mailbox to confirm Persisted (sendHandoffMail returns success)",
           "newState": "MailConfirmed",
-          "guard": "mailboxState # MAILBOX_OBSERVE_NoMail"
+          "guard": "mailboxState = MAILBOX_OBSERVE_Persisted"
         },
         {
           "currentState": "MailConfirmed",
@@ -63,8 +63,9 @@
         },
         {
           "currentState": "RespawnRequested",
-          "event": "terminal: cycle command exits after RespawnPane returns",
-          "newState": "RespawnRequested"
+          "event": "cycle command exits; loop back to Idle for next PreCompact",
+          "newState": "Idle",
+          "guard": "mailboxState = MAILBOX_OBSERVE_NoMail"
         }
       ]
     }

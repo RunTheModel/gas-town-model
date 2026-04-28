@@ -1,0 +1,123 @@
+{
+  "name": "Sling3768Bug",
+  "messageSet": ["PreCompact", "RunCycle", "HandoffMail", "Respawn", "BootSuccessor", "ResumeMail", "Sling", "Acquire", "Granted", "Release"],
+  "description": "Issue #3768 demo. Composes a multi-cycle substrate (Hook+Agent+HandoffCycle+Mailbox+Pane all looping) with three Patrol+Sling+Bead lanes contending for a shared AssigneeLock. The substrate fires PreCompact maxCycles times; each Resumed window enables a Patrol to invoke its Sling; each Sling acquires the lock, hooks its Bead, releases the lock.\n\nFormula identity (defense-doc P2.5): three Beads with two distinct formulas:\n  - Bead1 (formulaId=1) and Bead2 (formulaId=1): SAME formula. Two of these in Hooked status violates the per-formula singleton.\n  - Bead3 (formulaId=2): different formula. Even if Hooked, doesn't violate.\nThe HookedSingleton invariant is pairwise, formula-keyed: 'no two beads of the SAME formula are both Hooked.'\n\nDefense-doc disposition:\n  - P1.1 (fan-out): each Sling targets its own Bead via point-to-point binding; no fan-out.\n  - P1.2 (lock contention): AssigneeLock has 3 clients; all three Slings contend.\n  - P1.3 (baked initial state): no prior bead. All hooks observable in the trace.\n  - P2.4 (multi-cycle): substrate loops maxCycles=3 times so all three patrols can land in distinct cycles in some interleavings (loose coupling -- TLC explores all).\n  - P2.5 (formula identity): bead `formula` typed-int variable + pairwise invariant. Bead3 acts as the cross-formula control: traces where it's Hooked alongside one same-formula Hooked don't violate; traces where two same-formula are Hooked do.\n\nCOUNTER-EXAMPLE READING GUIDE (defense-doc P3.6):\n  - bead.status: 0=Open, 1=Hooked, 2=Closed (mirrors internal/beads/status.go).\n  - bead.formula: per-instance integer; two beads with equal formula are 'same formula' for singleton purposes.\n  - assigneeLockState: Free / HeldBy1 / HeldBy2 / HeldBy3 -- Sl_i is client i.\n  - agentState: Active (working) / Compacting (PreCompact fired) / Resumed (post-respawn, mail read).\n  - paneState: Alive / Respawning / AlivePostRespawn -- the AlivePostRespawn->Alive loop is between cycles.\n  - mailboxState: NoMail / Persisted / BootRequested / Delivered -- Delivered->NoMail loops between cycles.\n  - hookState: single Idle state; hookCount counts elapsed cycles.\n\nFAIRNESS ASSUMPTIONS (defense-doc P3.7):\n  Weak fairness on every component models 'these processes don't permanently stall' -- every continuously-enabled transition eventually fires. Specs that assume otherwise (daemon dead, no respawn ever, stuck patrol scheduler) are out of scope for this model. Real gas-town has crash-loop tracking (RestartTracker) and watchdog signals not modeled here.\n\nReal sources: sling.go:912 (assignee lock), sling.go:918 (hookBeadWithRetry, no precondition check), the witness/refinery patrol cycles that invoke `gt sling` per substrate respawn.",
+
+  "actors": [],
+
+  "components": [
+    {"use": "Hook", "as": "Hk", "fairness": "weak",
+     "options": {"maxCycles": 3},
+     "bind": {
+       "AGENT":         "Ag.HOOK_FIRES",
+       "AGENT_OBSERVE": "Ag"
+     }},
+
+    {"use": "Agent", "as": "Ag", "fairness": "weak",
+     "bind": {
+       "HOOK_FIRES":      "Hk.AGENT",
+       "TRIGGER_CYCLE":   "Cyc.TRIGGER",
+       "PRIME_FROM_MAIL": "Mb.DELIVER"
+     }},
+
+    {"use": "HandoffCycle", "as": "Cyc", "fairness": "weak",
+     "bind": {
+       "TRIGGER":         "Ag.TRIGGER_CYCLE",
+       "SAVE_MAIL":       "Mb.SAVE",
+       "MAILBOX_OBSERVE": "Mb",
+       "RESPAWN_PANE":    "Pn.RESPAWN_REQUEST"
+     }},
+
+    {"use": "Mailbox", "as": "Mb", "fairness": "weak",
+     "bind": {
+       "SAVE":         "Cyc.SAVE_MAIL",
+       "BOOT_TRIGGER": "Pn.BOOT_SUCCESSOR",
+       "DELIVER":      "Ag.PRIME_FROM_MAIL"
+     }},
+
+    {"use": "Pane", "as": "Pn", "fairness": "weak",
+     "bind": {
+       "RESPAWN_REQUEST": "Cyc.RESPAWN_PANE",
+       "BOOT_SUCCESSOR":  "Mb.BOOT_TRIGGER"
+     }},
+
+    {"use": "AssigneeLock", "as": "Lock", "fairness": "weak",
+     "bind": {
+       "ACQUIRE_1": "Sl1.LOCK_ACQUIRE_OUT",
+       "GRANTED_1": "Sl1.LOCK_GRANTED_IN",
+       "RELEASE_1": "Sl1.LOCK_RELEASE_OUT",
+       "ACQUIRE_2": "Sl2.LOCK_ACQUIRE_OUT",
+       "GRANTED_2": "Sl2.LOCK_GRANTED_IN",
+       "RELEASE_2": "Sl2.LOCK_RELEASE_OUT",
+       "ACQUIRE_3": "Sl3.LOCK_ACQUIRE_OUT",
+       "GRANTED_3": "Sl3.LOCK_GRANTED_IN",
+       "RELEASE_3": "Sl3.LOCK_RELEASE_OUT"
+     }},
+
+    {"use": "Patrol", "as": "Ptl1", "fairness": "weak",
+     "bind": {
+       "AGENT_OBSERVE": "Ag",
+       "INVOKE_SLING":  "Sl1.INVOKE"
+     }},
+
+    {"use": "Sling", "as": "Sl1", "fairness": "weak",
+     "bind": {
+       "INVOKE":           "Ptl1.INVOKE_SLING",
+       "LOCK_ACQUIRE_OUT": "Lock.ACQUIRE_1",
+       "LOCK_GRANTED_IN":  "Lock.GRANTED_1",
+       "LOCK_RELEASE_OUT": "Lock.RELEASE_1",
+       "HOOK_OUT":         "Bead1.HOOK"
+     }},
+
+    {"use": "Patrol", "as": "Ptl2", "fairness": "weak",
+     "bind": {
+       "AGENT_OBSERVE": "Ag",
+       "INVOKE_SLING":  "Sl2.INVOKE"
+     }},
+
+    {"use": "Sling", "as": "Sl2", "fairness": "weak",
+     "bind": {
+       "INVOKE":           "Ptl2.INVOKE_SLING",
+       "LOCK_ACQUIRE_OUT": "Lock.ACQUIRE_2",
+       "LOCK_GRANTED_IN":  "Lock.GRANTED_2",
+       "LOCK_RELEASE_OUT": "Lock.RELEASE_2",
+       "HOOK_OUT":         "Bead2.HOOK"
+     }},
+
+    {"use": "Patrol", "as": "Ptl3", "fairness": "weak",
+     "bind": {
+       "AGENT_OBSERVE": "Ag",
+       "INVOKE_SLING":  "Sl3.INVOKE"
+     }},
+
+    {"use": "Sling", "as": "Sl3", "fairness": "weak",
+     "bind": {
+       "INVOKE":           "Ptl3.INVOKE_SLING",
+       "LOCK_ACQUIRE_OUT": "Lock.ACQUIRE_3",
+       "LOCK_GRANTED_IN":  "Lock.GRANTED_3",
+       "LOCK_RELEASE_OUT": "Lock.RELEASE_3",
+       "HOOK_OUT":         "Bead3.HOOK"
+     }},
+
+    {"use": "Bead", "as": "Bead1", "fairness": "weak",
+     "options": {"formulaId": 1},
+     "bind": {"HOOK": "Sl1.HOOK_OUT"}},
+
+    {"use": "Bead", "as": "Bead2", "fairness": "weak",
+     "options": {"formulaId": 1},
+     "bind": {"HOOK": "Sl2.HOOK_OUT"}},
+
+    {"use": "Bead", "as": "Bead3", "fairness": "weak",
+     "options": {"formulaId": 2},
+     "bind": {"HOOK": "Sl3.HOOK_OUT"}}
+  ],
+
+  "invariants": [
+    {
+      "id": "HookedSingleton",
+      "description": "CRITICAL. Per #3768: at most one bead of any (assignee, formula) tuple is in Hooked status at any time. Pairwise check across all three beads: no two same-formula beads are simultaneously Hooked. Bead1 and Bead2 share formulaId=1 -- both Hooked = violation. Bead3 has formulaId=2 -- being Hooked alongside one of {Bead1, Bead2} is allowed (cross-formula). The lock serializes the Slings but does not prevent the same-formula violation, demonstrating that the per-assignee lock is not the mechanism that should enforce singleton.",
+      "expression": "(Bead1.formula # Bead2.formula \\/ Bead1.status # 1 \\/ Bead2.status # 1) /\\ (Bead1.formula # Bead3.formula \\/ Bead1.status # 1 \\/ Bead3.status # 1) /\\ (Bead2.formula # Bead3.formula \\/ Bead2.status # 1 \\/ Bead3.status # 1)",
+      "severity": "critical"
+    }
+  ]
+}

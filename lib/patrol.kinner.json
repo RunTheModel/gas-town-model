@@ -1,0 +1,41 @@
+{
+  "name": "Patrol",
+  "version": "0.3.0",
+  "description": "Library component. Models the patrol scheduler that re-invokes `gt sling` for the same formula+agent on each substrate cycle. Real implementation: witness/refinery patrol-cycle loops invoke `gt sling <patrol-formula> <agent>` to keep an active hooked-mol on the patrol agent (mol-deacon-patrol, mol-witness-patrol, mol-refinery-patrol).\n\nv0.3 (defense-doc P2.4): loose coupling. Each Patrol fires once when Agent is Resumed; multiple Patrol instances may all fire on the same Resumed window or interleave across cycles depending on TLC's exploration. The model preserves real gas-town's loose coupling -- patrols run on independent timers (witness/refinery loops), not synchronized with the substrate's compact cycles. Multiple Patrols composed in one project demonstrate accumulation across all Patrol fires regardless of which cycle they land in.",
+
+  "ports": {
+    "AGENT_OBSERVE": {
+      "direction": "observe",
+      "variable": "agentState",
+      "states": ["Resumed"],
+      "description": "watches the substrate Agent. Patrol fires when agent is Resumed (substrate cycle complete)."
+    },
+    "INVOKE_SLING": {
+      "direction": "out",
+      "description": "invokes `gt sling`. Tagged 'Sling'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Patrol",
+      "owner": "Patrol scheduler. Pending until agent resumes; invokes gt sling once. After Slung, terminal.",
+      "initialState": "Pending",
+      "states": ["Pending", "Slung"],
+      "triples": [
+        {
+          "currentState": "Pending",
+          "event": "agent resumed: invoke gt sling for the same formula+agent",
+          "newState": "Slung",
+          "isSend": true,
+          "sendTo": "INVOKE_SLING",
+          "tag": "Sling",
+          "guard": "agentState = AGENT_OBSERVE_Resumed"
+        },
+        {"currentState": "Slung", "event": "terminal", "newState": "Slung"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

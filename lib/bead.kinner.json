@@ -1,0 +1,43 @@
+{
+  "name": "Bead",
+  "version": "0.4.0",
+  "description": "Library component. Models one row in the beads database. Status is a typed integer: 0=Open, 1=Hooked, 2=Closed (mirrors internal/beads/status.go's enum). Each `gt sling` invocation creates a new bead row and transitions it from status=0 to status=1 via hookBeadWithRetry (sling.go:918).\n\nv0.4 (defense-doc P2.5): adds a `formula` typed-int variable, initialized per-instance via the 148-shape `formulaId` option. Lets the project model multiple beads of multiple formulas on the same assignee. The HookedSingleton invariant becomes formula-keyed: `Bead_i.status = 1 AND Bead_j.status = 1 AND Bead_i.formula = Bead_j.formula` is the violation pattern. With one cross-formula bead in the project, two beads of different formulas can both be Hooked without violating, while two beads of the same formula cannot.\n\nv0.3 (defense-doc P2.4): per-instance initial status is parameterized via the 148-shape `initial` option, letting the same component model 'a fresh bead created right now' (initial=0) and 'a bead that was already hooked at t=0 from a prior sling' (initial=1) without two component variants. The multi-cycle redesign no longer uses the prior shorthand, but the option remains for other models.\n\nThe Close path (status 1 -> 2 via gt done / bd.Close) is NOT modeled in this v0.4 -- the #3768 bug demo doesn't need it. Add a CLOSE in-port + transition when modeling the proposed fix that pre-closes existing hooked beads.",
+
+  "ports": {
+    "HOOK": {
+      "direction": "in",
+      "description": "receives a hook event when a sling targets this bead. Tagged 'Sling'. Real: sling.go:918 hookBeadWithRetry. Triple guard `status = 0` enforces the lifecycle: a Hooked bead receiving Sling does nothing (the bug is that sling.go creates a NEW row each time, not that it overwrites an existing one's status)."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Bead",
+      "owner": "Single bead's status as a typed integer (0=Open, 1=Hooked, 2=Closed) plus a formula identifier. Both initialized from per-instance options.",
+      "initialState": "Live",
+      "options": {
+        "initial":   {"type": "integer", "default": 0},
+        "formulaId": {"type": "integer", "default": 1}
+      },
+      "variables": {
+        "status":  {"type": "integer", "bound": [0, 2], "default": "initial"},
+        "formula": {"type": "integer", "bound": [0, 9], "default": "formulaId"}
+      },
+      "states": ["Live"],
+      "triples": [
+        {
+          "currentState": "Live",
+          "event": "sling targets this bead: status 0 -> 1 (open -> hooked)",
+          "newState": "Live",
+          "isReceive": true,
+          "receiveFrom": "HOOK",
+          "tag": "Sling",
+          "guard": "status == 0",
+          "assign": {"status": "status + 1"}
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

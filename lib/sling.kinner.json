@@ -1,0 +1,67 @@
+{
+  "name": "Sling",
+  "version": "0.2.0",
+  "description": "Library component. Models the `gt sling <formula> <agent>` subcommand. Real source: internal/cmd/sling.go:196-1041 (runSling).\n\nWhat the code does (sling.go:912-918): acquire per-assignee lock, call hookBeadWithRetry which writes a single bead's row to status=hooked, release the lock. THAT IS ALL. No precondition check for an existing hook of the same formula on the same assignee.\n\nThis component models that flow with explicit lock interaction. v0.2 (defense-doc P1.2): replaces v0.1's decorative LockHeld state with a real lock handshake. Five states track the call sequence: Idle -> AcquiringLock (sent Acquire, waiting for Granted) -> Hooking (about to fire HOOK_OUT) -> Releasing (about to send Release) -> Done. The component sends Acquire on LOCK_ACQUIRE_OUT and waits for Granted on LOCK_GRANTED_IN before proceeding; this lets two contending Slings serialize through a shared AssigneeLock without modeling the lock inline.\n\nThe proposed #3768 fix would add a precondition check between LockHeld and Hooking (e.g., observe a hooked-bead registry and refuse to hook if one already exists for the same formula). This component is the unfixed code -- it acquires, hooks, releases unconditionally.",
+
+  "ports": {
+    "INVOKE": {
+      "direction": "in",
+      "description": "patrol or external trigger invokes the sling subcommand. Tagged 'Sling'."
+    },
+    "LOCK_ACQUIRE_OUT": {
+      "direction": "out",
+      "description": "send Acquire to the per-assignee lock (sling.go:912 tryAcquireSlingAssigneeLock). Tagged 'Acquire'."
+    },
+    "LOCK_GRANTED_IN": {
+      "direction": "in",
+      "description": "receive Granted from the per-assignee lock once it's free. Tagged 'Granted'."
+    },
+    "LOCK_RELEASE_OUT": {
+      "direction": "out",
+      "description": "release the lock after the bead row has been hooked (sling.go: function-return implicit). Tagged 'Release'."
+    },
+    "HOOK_OUT": {
+      "direction": "out",
+      "description": "fires the hook event at the target bead (sling.go:918 hookBeadWithRetry). Tagged 'Sling'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Sling",
+      "owner": "gt sling subcommand. Acquires per-assignee lock, calls hookBeadWithRetry, releases lock. Five states: Idle, AcquiringLock, Hooking, Releasing, Done.",
+      "initialState": "Idle",
+      "states": ["Idle", "AcquiringLock", "Hooking", "Releasing", "Done"],
+      "triples": [
+        {
+          "currentState": "Idle",
+          "event": "patrol invokes sling: send Acquire (sling.go:912)",
+          "newState": "AcquiringLock",
+          "isReceive": true, "receiveFrom": "INVOKE", "tag": "Sling",
+          "isSend": true, "sendTo": "LOCK_ACQUIRE_OUT", "sendTag": "Acquire"
+        },
+        {
+          "currentState": "AcquiringLock",
+          "event": "lock granted: proceed to hookBeadWithRetry",
+          "newState": "Hooking",
+          "isReceive": true, "receiveFrom": "LOCK_GRANTED_IN", "tag": "Granted"
+        },
+        {
+          "currentState": "Hooking",
+          "event": "hookBeadWithRetry on target bead (sling.go:918)",
+          "newState": "Releasing",
+          "isSend": true, "sendTo": "HOOK_OUT", "tag": "Sling"
+        },
+        {
+          "currentState": "Releasing",
+          "event": "release lock (sling.go: implicit on function return)",
+          "newState": "Done",
+          "isSend": true, "sendTo": "LOCK_RELEASE_OUT", "tag": "Release"
+        },
+        {"currentState": "Done", "event": "terminal", "newState": "Done"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}
