@@ -1,0 +1,62 @@
+{
+  "name": "Mailbox",
+  "version": "0.1.0",
+  "description": "Library component. Models the bead store as the persistent handoff mailbox. The mailbox holds the agent's saved state across a respawn -- the single source of truth bridging the predecessor agent's death and the successor's boot. Real implementation: sendHandoffMail (internal/cmd/handoff.go:515) writes a self-addressed bead with the auto-collected state; the successor's gt prime --hook reads it via runPrimeCompactResume (prime.go:167-170).\n\nThe mailbox sequences delivery: it persists mail when the cycle saves, but only delivers AFTER the pane has respawned and signaled that the successor process exists. This captures the substrate ordering -- the mail can't be read by a process that hasn't booted yet.",
+
+  "ports": {
+    "SAVE": {
+      "direction": "in",
+      "description": "Handoff cycle persists the agent's state. Real: sendHandoffMail writes to the beads database; auto-hook ensures the successor sees it as their hooked work."
+    },
+    "BOOT_TRIGGER": {
+      "direction": "in",
+      "description": "Pane signals that the successor process has started. Mailbox now has someone to deliver to. Real: when the new pane runs SessionStart hook, gt prime --hook initiates the resume."
+    },
+    "DELIVER": {
+      "direction": "out",
+      "description": "Successor agent's SessionStart hook reads the persisted mail and resumes. Real: gt prime --hook -> runPrimeCompactResume injects the mail context into the fresh Claude process."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Mailbox",
+      "owner": "Persistent state-handoff store. Spec-side abstraction of the beads database row whose life spans the pane respawn (the only state that survives the kill).",
+      "initialState": "NoMail",
+      "states": ["NoMail", "Persisted", "BootRequested", "Delivered"],
+      "triples": [
+        {
+          "currentState": "NoMail",
+          "event": "handoff cycle saves mail (auto-collected state)",
+          "newState": "Persisted",
+          "isReceive": true,
+          "receiveFrom": "SAVE",
+          "tag": "HandoffMail"
+        },
+        {
+          "currentState": "Persisted",
+          "event": "pane respawn complete -- successor process has started",
+          "newState": "BootRequested",
+          "isReceive": true,
+          "receiveFrom": "BOOT_TRIGGER",
+          "tag": "BootSuccessor"
+        },
+        {
+          "currentState": "BootRequested",
+          "event": "successor agent's SessionStart hook reads the mail",
+          "newState": "Delivered",
+          "isSend": true,
+          "sendTo": "DELIVER",
+          "tag": "ResumeMail"
+        },
+        {
+          "currentState": "Delivered",
+          "event": "terminal: mail consumed (this model covers one cycle)",
+          "newState": "Delivered"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

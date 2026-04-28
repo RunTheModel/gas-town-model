@@ -1,0 +1,57 @@
+{
+  "name": "Agent",
+  "version": "0.1.0",
+  "description": "Library component. Models the substrate view of an LLM session (Claude Code, Pi, Codex) running in a tmux pane, captured across one context-cycle boundary. Three states: Active (predecessor doing work), Compacting (PreCompact fired, runtime is invoking the cycle command, predecessor is about to die), Resumed (successor read the handoff mail via gt prime --hook and is back at work).\n\nThe Active->Compacting->Resumed shape compresses the kill+respawn into a single observable transition: from the model's perspective, the agent is the same actor that goes through compaction. Real implementation distinguishes predecessor PID from successor PID, but for the substrate protocol the only thing that matters is whether mail safely persisted before the kill -- which is what the composition's invariants verify.\n\nReal implementation: hooks/config.go DefaultOverrides registers crew PreCompact -> 'gt handoff --cycle --reason compaction'. The hook fires the cycle subprocess (handoff.go:455-591) which respawns the pane (handoff.go:591). The new pane runs the SessionStart hook which is `gt prime --hook`; checkHandoffMarker (prime.go:138) detects the marker and runPrimeCompactResume injects the mail context (prime.go:167-170).",
+
+  "ports": {
+    "HOOK_FIRES": {
+      "direction": "in",
+      "description": "Lifecycle hook fires on this agent. Tagged 'PreCompact' for context-cycle. Real: hooks/config.go DefaultOverrides registers crew PreCompact -> 'gt handoff --cycle --reason compaction'."
+    },
+    "TRIGGER_CYCLE": {
+      "direction": "out",
+      "description": "After the runtime fires PreCompact, the runtime executes the registered hook command (the cycle subprocess). Modeled here as a direct trigger to HandoffCycle. Real: tmux exec spawns the hook command which is the gt handoff --cycle invocation."
+    },
+    "PRIME_FROM_MAIL": {
+      "direction": "in",
+      "description": "Successor's SessionStart hook delivers boot signal: gt prime --hook reads the handoff mail and resumes work. Real: prime.go:167-170 runPrimeCompactResume."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Agent",
+      "owner": "Substrate-layer LLM session, captured across one cycle. Active is the predecessor; Resumed is the successor; Compacting is the moment the predecessor's runtime fires the cycle command and the agent is about to die. Sequencing the kill+respawn+boot into one Compacting->Resumed edge keeps the spec focused on the substrate protocol (mail safety) without modeling tmux mechanics state-by-state.",
+      "initialState": "Active",
+      "states": ["Active", "Compacting", "Resumed"],
+      "triples": [
+        {
+          "currentState": "Active",
+          "event": "PreCompact hook fires -- agent's context window is about to compact",
+          "newState": "Compacting",
+          "isReceive": true,
+          "receiveFrom": "HOOK_FIRES",
+          "tag": "PreCompact"
+        },
+        {
+          "currentState": "Compacting",
+          "event": "runtime executes the registered cycle command (gt handoff --cycle)",
+          "newState": "Compacting",
+          "isSend": true,
+          "sendTo": "TRIGGER_CYCLE",
+          "tag": "RunCycle"
+        },
+        {
+          "currentState": "Compacting",
+          "event": "successor's SessionStart hook reads handoff mail; agent resumes work",
+          "newState": "Resumed",
+          "isReceive": true,
+          "receiveFrom": "PRIME_FROM_MAIL",
+          "tag": "ResumeMail"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

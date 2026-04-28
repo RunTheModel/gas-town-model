@@ -1,0 +1,72 @@
+{
+  "name": "Substrate",
+  "messageSet": ["PreCompact", "RunCycle", "HandoffMail", "Respawn", "BootSuccessor", "ResumeMail"],
+  "description": "How an LLM session survives a context-window compaction in Gas Town.\n\nThe substrate layer is what holds an agent process together across the moment its context fills up. The work-coordination layer (convoy-lands and friends) assumes the agent is alive; this spec models the protocol that keeps that assumption true through one PreCompact event.\n\nFive actors: a Hook that fires PreCompact, an Agent that the runtime is hosting, the HandoffCycle subprocess that runs when the cycle command is invoked, the Mailbox where the agent's state lives across the kill, and the Pane that gets atomically respawned. The composition's documentary invariants describe the protocol's design intent: mail must persist before the pane is respawned; the successor cannot read mail until the pane has booted.\n\nReal sources: internal/hooks/config.go (hook config + DefaultOverrides), internal/cmd/handoff.go:455-591 (the cycle subcommand), internal/cmd/prime.go:130-170 (the post-respawn boot path).\n\nElided: the handoff-marker file (optimization signal, not correctness gate), the named-vs-headless distinction (PR 745's bug surface, deferred), the RestartTracker crash-loop gate (separate substrate concern).",
+
+  "actors": [],
+
+  "components": [
+    {"use": "Hook", "as": "Hk", "fairness": "weak",
+     "bind": {
+       "AGENT": "Ag.HOOK_FIRES"
+     }},
+
+    {"use": "Agent", "as": "Ag", "fairness": "weak",
+     "bind": {
+       "HOOK_FIRES":      "Hk.AGENT",
+       "TRIGGER_CYCLE":   "Cyc.TRIGGER",
+       "PRIME_FROM_MAIL": "Mb.DELIVER"
+     }},
+
+    {"use": "HandoffCycle", "as": "Cyc", "fairness": "weak",
+     "bind": {
+       "TRIGGER":         "Ag.TRIGGER_CYCLE",
+       "SAVE_MAIL":       "Mb.SAVE",
+       "MAILBOX_OBSERVE": "Mb",
+       "RESPAWN_PANE":    "Pn.RESPAWN_REQUEST"
+     }},
+
+    {"use": "Mailbox", "as": "Mb", "fairness": "weak",
+     "bind": {
+       "SAVE":         "Cyc.SAVE_MAIL",
+       "BOOT_TRIGGER": "Pn.BOOT_SUCCESSOR",
+       "DELIVER":      "Ag.PRIME_FROM_MAIL"
+     }},
+
+    {"use": "Pane", "as": "Pn", "fairness": "weak",
+     "bind": {
+       "RESPAWN_REQUEST": "Cyc.RESPAWN_PANE",
+       "BOOT_SUCCESSOR":  "Mb.BOOT_TRIGGER"
+     }}
+  ],
+
+  "invariants": [
+    {
+      "id": "MailSafeBeforeRespawn",
+      "description": "Documentary: by the time the pane has been respawned (or is respawning), the handoff mail must already be persisted. This is the substrate's safety property -- the kill cannot land before the state save. Code: handoff.go:515-526 makes sendHandoffMail fatal-on-error precisely so the pane respawn is never reached if mail failed.",
+      "expression": "(Pn.pane = Pn.Alive) \\/ (Mb.mailbox # Mb.NoMail)",
+      "severity": "critical"
+    },
+    {
+      "id": "DeliverOnlyAfterBoot",
+      "description": "Documentary: the mailbox cannot deliver to the successor until the pane has signaled the successor exists. State Delivered is reachable only via BootRequested, which requires Pane.AlivePostRespawn.",
+      "expression": "(Mb.mailbox # Mb.Delivered) \\/ (Pn.pane = Pn.AlivePostRespawn)",
+      "severity": "high"
+    },
+    {
+      "id": "ResumeOnlyAfterMailDelivered",
+      "description": "Documentary: the agent reaches Resumed only by reading the mailbox. There is no other path to Resumed.",
+      "expression": "(Ag.agent # Ag.Resumed) \\/ (Mb.mailbox = Mb.Delivered)",
+      "severity": "high"
+    }
+  ],
+
+  "properties": [
+    {
+      "id": "AgentEventuallyResumes",
+      "description": "Liveness: in every behavior, the agent eventually reaches Resumed -- the substrate completes the cycle. With weak fairness on every component, no actor can stutter forever; the cycle must run to completion.",
+      "expression": "<>(Ag.agent = Ag.Resumed)",
+      "severity": "high"
+    }
+  ]
+}

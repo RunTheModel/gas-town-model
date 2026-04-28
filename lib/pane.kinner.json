@@ -1,0 +1,50 @@
+{
+  "name": "Pane",
+  "version": "0.1.0",
+  "description": "Library component. Models a tmux pane as the substrate that hosts the LLM session. The pane is what survives the agent's death: t.RespawnPane (internal/cmd/handoff.go:591) is the atomic kill-and-start primitive. Before the respawn, handoff sets `remain-on-exit` so the pane survives process death (handoff.go:571), then ClearHistory clears scrollback (handoff.go:576), then RespawnPane kills the current process and starts a fresh one with the rebuilt restart command (built with --continue so the new Claude resumes the conversation).",
+
+  "ports": {
+    "RESPAWN_REQUEST": {
+      "direction": "in",
+      "description": "Handoff cycle requests a respawn. Real: t.RespawnPane(pane, restartCmd)."
+    },
+    "BOOT_SUCCESSOR": {
+      "direction": "out",
+      "description": "After the respawn, the new pane process starts. Modeled as boot signal to the (successor) Agent. Real: tmux runs the restart command in the freshly killed pane; the new Claude session starts and SessionStart hook fires."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Pane",
+      "owner": "Tmux pane lifecycle around handoff. Alive (predecessor running) -> Respawning (killing predecessor, starting successor) -> AlivePostRespawn (successor running). The kill is atomic with the start (RespawnPane is one operation, not kill-then-start).",
+      "initialState": "Alive",
+      "states": ["Alive", "Respawning", "AlivePostRespawn"],
+      "triples": [
+        {
+          "currentState": "Alive",
+          "event": "handoff cycle requests respawn",
+          "newState": "Respawning",
+          "isReceive": true,
+          "receiveFrom": "RESPAWN_REQUEST",
+          "tag": "Respawn"
+        },
+        {
+          "currentState": "Respawning",
+          "event": "tmux respawn-pane: predecessor process killed, successor process started fresh",
+          "newState": "AlivePostRespawn",
+          "isSend": true,
+          "sendTo": "BOOT_SUCCESSOR",
+          "tag": "BootSuccessor"
+        },
+        {
+          "currentState": "AlivePostRespawn",
+          "event": "terminal: pane is alive with the successor (this model covers one cycle)",
+          "newState": "AlivePostRespawn"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

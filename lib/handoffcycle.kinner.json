@@ -1,0 +1,74 @@
+{
+  "name": "HandoffCycle",
+  "version": "0.1.0",
+  "description": "Library component. Models `gt handoff --cycle` (internal/cmd/handoff.go:455-591), the substrate command that does session succession. Triggered by a PreCompact hook firing the cycle command as a subprocess. The two ordered substrate actions modeled here are: persist handoff mail, then respawn the tmux pane. The pane respawn atomically kills the current agent and starts a fresh one; the new agent's SessionStart hook reads the mail to resume.\n\nThe ordering matters for correctness: mail must be persisted BEFORE the pane respawn (else the new agent boots with no work). The real code makes mail-persist fatal-on-error (handoff.go:515-526) for exactly this reason -- silent failure would leave the next session with an empty hook.\n\nElided from this cut: the handoff marker file (handoff.go:533-541). The marker is an optimization signal that lets gt prime --hook take a lighter resume path (runPrimeCompactResume) instead of a full setupPrimeSession; both paths read the same mail. The marker is not a correctness gate, so we omit it for spec clarity.",
+
+  "ports": {
+    "TRIGGER": {
+      "direction": "in",
+      "description": "Cycle command invoked. Real: hook config registers `gt handoff --cycle --reason compaction` as the PreCompact handler; tmux runs it as a subprocess."
+    },
+    "SAVE_MAIL": {
+      "direction": "out",
+      "description": "Persist handoff mail to beads. Real: sendHandoffMail (handoff.go:515) -- auto-hooked for successor; fatal on failure."
+    },
+    "MAILBOX_OBSERVE": {
+      "direction": "observe",
+      "variable": "mailboxState",
+      "states": ["NoMail", "Persisted", "BootRequested", "Delivered"],
+      "description": "Observe the Mailbox state to confirm mail has actually been persisted before requesting the pane respawn. Real: sendHandoffMail is a synchronous call that returns success only AFTER persistence (handoff.go:515-526); we model that synchrony as an observe-guard."
+    },
+    "RESPAWN_PANE": {
+      "direction": "out",
+      "description": "Tell the tmux pane to kill the current process and start a fresh one. Real: t.RespawnPane (handoff.go:591) -- atomic kill+start."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "HandoffCycle",
+      "owner": "Substrate session-succession driver. Three observable transitions per cycle: trigger (run as subprocess), save mail, request respawn.",
+      "initialState": "Idle",
+      "states": ["Idle", "MailPending", "MailSent", "MailConfirmed", "RespawnRequested"],
+      "triples": [
+        {
+          "currentState": "Idle",
+          "event": "agent's PreCompact handler invokes the cycle command",
+          "newState": "MailPending",
+          "isReceive": true,
+          "receiveFrom": "TRIGGER",
+          "tag": "RunCycle"
+        },
+        {
+          "currentState": "MailPending",
+          "event": "send handoff mail (auto-collect state into a self-addressed bead)",
+          "newState": "MailSent",
+          "isSend": true,
+          "sendTo": "SAVE_MAIL",
+          "tag": "HandoffMail"
+        },
+        {
+          "currentState": "MailSent",
+          "event": "wait for Mailbox to confirm Persisted (sendHandoffMail returns success)",
+          "newState": "MailConfirmed",
+          "guard": "mailboxState # MAILBOX_OBSERVE_NoMail"
+        },
+        {
+          "currentState": "MailConfirmed",
+          "event": "request tmux pane respawn (atomic kill+start fresh)",
+          "newState": "RespawnRequested",
+          "isSend": true,
+          "sendTo": "RESPAWN_PANE",
+          "tag": "Respawn"
+        },
+        {
+          "currentState": "RespawnRequested",
+          "event": "terminal: cycle command exits after RespawnPane returns",
+          "newState": "RespawnRequested"
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}
