@@ -30,11 +30,11 @@
       "states": ["Idle", "ProcessingMR1", "NotifiedMR1", "ProcessingMR2", "NotifiedMR2"],
       "triples": [
         {"currentState": "Idle",           "event": "receives MergeReady from polecat1",              "newState": "ProcessingMR1", "isReceive": true, "receiveFrom": "MERGE_READY1", "tag": "MergeReady"},
-        {"currentState": "ProcessingMR1",  "event": "notify MR1 it is being processed",              "newState": "NotifiedMR1",   "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "Processing"},
-        {"currentState": "NotifiedMR1",    "event": "MR1 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "Merged"},
+        {"currentState": "ProcessingMR1",  "event": "notify MR1 it is being processed",              "newState": "NotifiedMR1",   "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "ClaimMR"},
+        {"currentState": "NotifiedMR1",    "event": "MR1 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY1",        "tag": "MergeMR"},
         {"currentState": "Idle",           "event": "receives MergeReady from polecat2",              "newState": "ProcessingMR2", "isReceive": true, "receiveFrom": "MERGE_READY2", "tag": "MergeReady"},
-        {"currentState": "ProcessingMR2",  "event": "notify MR2 it is being processed",              "newState": "NotifiedMR2",   "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "Processing"},
-        {"currentState": "NotifiedMR2",    "event": "MR2 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "Merged"}
+        {"currentState": "ProcessingMR2",  "event": "notify MR2 it is being processed",              "newState": "NotifiedMR2",   "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "ClaimMR"},
+        {"currentState": "NotifiedMR2",    "event": "MR2 merged: notify and return to idle",          "newState": "Idle",          "isSend": true,    "sendTo": "MR_NOTIFY2",        "tag": "MergeMR"}
       ]
     }
   ],

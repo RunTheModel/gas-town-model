@@ -1,0 +1,29 @@
+{
+  "name": "LaneSmoke",
+  "messageSet": ["Sling", "MergeReady", "ClaimMR", "MergeMR", "Clean", "PreCompact"],
+  "description": "Smoke test for the Lane composite. ONE Lane plus a LaneDriver that stubs out everything around it (Feeder, Refinery, Landing collapsed into one driver). Validates the lane shape compiles and TLC reaches the terminal flow without invariant violations.\n\nIf this clears TLC, the lane shape is structurally sound and we can swap convoy-lands' enumerated per-lane components for Lane composites.",
+
+  "actors": [],
+
+  "components": [
+    {"use": "LaneDriver", "as": "Drv",
+     "bind": {
+       "SLING_ISSUE": "Lane1.SLING_TO_ISSUE",
+       "SLING_POL":   "Lane1.SLING_TO_POLECAT",
+       "MERGE_READY": "Lane1.MERGE_READY_OUT",
+       "REFINERY":    "Lane1.REFINERY_IN",
+       "CLEAN":       "Lane1.CLEAN_IN"
+     }},
+
+    {"use": "Lane", "as": "Lane1",
+     "bind": {
+       "SLING_TO_ISSUE":   "Drv.SLING_ISSUE",
+       "SLING_TO_POLECAT": "Drv.SLING_POL",
+       "MERGE_READY_OUT":  "Drv.MERGE_READY",
+       "REFINERY_IN":      "Drv.REFINERY",
+       "CLEAN_IN":         "Drv.CLEAN"
+     }}
+  ],
+
+  "invariants": []
+}

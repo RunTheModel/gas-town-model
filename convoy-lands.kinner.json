@@ -1,62 +1,88 @@
 {
   "name": "ConvoyLands",
-  "description": "Application spec. Full convoy-lands flow as pure composition. Zero inline actors. 14 component instances. MR advancement is Refinery-gated (not spontaneous) so NormalLandMeansWorkIntegrated is honest. Hook instances included -- Polecat's HOOK_IN port is part of the component, so Hook instances are part of every application that uses Polecat.",
+  "description": "Application spec. Full convoy-lands flow as pure composition. Two `Lane` instances replace the previous Iss1/Pol1/Mr1/Wt1/Hk1 + Iss2/Pol2/Mr2/Wt2/Hk2 enumeration -- 7 component instances down from 15. Each Lane bundles its own Hook + Polecat + Issue + MR + Worktree; the project wires only the lane-level boundaries (sling in, merge-ready out, refinery in, clean in) plus the cross-cutting coordinators (Mayor, Convoy, Feeder, Refinery, Landing). Project invariants observe lane internals via deep paths (Lane1.Iss, Lane1.Pol, etc.) -- backlog 146 enables the deep-bind resolution.",
 
-  "messageSet": ["Launch", "Land", "ForceLand", "ConvoyDone", "Sling", "MergeReady", "Processing", "Merged", "Clean", "PreCompact"],
+  "messageSet": ["Launch", "Land", "ForceLand", "ConvoyDone", "Sling", "MergeReady", "ClaimMR", "MergeMR", "Clean", "PreCompact"],
 
   "actors": [],
 
   "components": [
-    {"use": "Mayor",    "as": "May",  "bind": {"LAUNCH": "Con.LAUNCH", "LAND": "Con.LAND", "CONVOY_DONE": "Con.CONVOY_DONE"}},
+    {"use": "Mayor",    "as": "May",  "bind": {
+      "LAUNCH":      "Con.LAUNCH",
+      "LAND":        "Con.LAND",
+      "CONVOY_DONE": "Con.CONVOY_DONE"
+    }},
+
     {"use": "Convoy",   "as": "Con",  "bind": {
-      "LAUNCH": "May.LAUNCH",
-      "LAND": "May.LAND",
-      "CONVOY_DONE": "May.CONVOY_DONE",
-      "ISS1_OBSERVE": "Iss1",
-      "ISS2_OBSERVE": "Iss2",
-      "MR1_OBSERVE": "Mr1",
-      "MR2_OBSERVE": "Mr2",
-      "POL1_OBSERVE": "Pol1",
-      "POL2_OBSERVE": "Pol2",
+      "LAUNCH":          "May.LAUNCH",
+      "LAND":            "May.LAND",
+      "CONVOY_DONE":     "May.CONVOY_DONE",
+      "ISS1_OBSERVE":    "Lane1.Iss",
+      "ISS2_OBSERVE":    "Lane2.Iss",
+      "MR1_OBSERVE":     "Lane1.Mr",
+      "MR2_OBSERVE":     "Lane2.Mr",
+      "POL1_OBSERVE":    "Lane1.Pol",
+      "POL2_OBSERVE":    "Lane2.Pol",
       "LANDING_OBSERVE": "Lnd"
     }},
-    {"use": "Feeder",   "as": "Fed",  "bind": {"SLING1": "Iss1.SLING", "SLING2": "Iss2.SLING", "CONVOY_OBSERVE": "Con"}},
-    {"use": "Refinery", "as": "Ref",  "bind": {
-      "MERGE_READY1": "Pol1.MERGE_READY",
-      "MERGE_READY2": "Pol2.MERGE_READY",
-      "MR_NOTIFY1": "Mr1.REFINERY_IN",
-      "MR_NOTIFY2": "Mr2.REFINERY_IN"
+
+    {"use": "Feeder",   "as": "Fed",  "bind": {
+      "SLING1_ISSUE":   "Lane1.SLING_TO_ISSUE",
+      "SLING1_POL":     "Lane1.SLING_TO_POLECAT",
+      "SLING2_ISSUE":   "Lane2.SLING_TO_ISSUE",
+      "SLING2_POL":     "Lane2.SLING_TO_POLECAT",
+      "CONVOY_OBSERVE": "Con"
     }},
-    {"use": "Landing",  "as": "Lnd",  "bind": {"CLEAN1": "Wt1.CLEAN", "CLEAN2": "Wt2.CLEAN", "CONVOY_OBSERVE": "Con", "WT1_OBSERVE": "Wt1", "WT2_OBSERVE": "Wt2"}},
-    {"use": "Issue",    "as": "Iss1", "bind": {"SLING": "Fed.SLING1", "POLECAT_OBSERVE": "Pol1"}},
-    {"use": "Issue",    "as": "Iss2", "bind": {"SLING": "Fed.SLING2", "POLECAT_OBSERVE": "Pol2"}},
-    {"use": "Polecat",  "as": "Pol1", "bind": {"SLING": "Fed",        "MERGE_READY": "Ref.MERGE_READY1", "HOOK_IN": "Hk1.AGENT", "ISSUE_OBSERVE": "Iss1"}},
-    {"use": "Polecat",  "as": "Pol2", "bind": {"SLING": "Fed",        "MERGE_READY": "Ref.MERGE_READY2", "HOOK_IN": "Hk2.AGENT", "ISSUE_OBSERVE": "Iss2"}},
-    {"use": "MR",       "as": "Mr1",  "bind": {"POLECAT_OBSERVE": "Pol1", "REFINERY_IN": "Ref.MR_NOTIFY1"}},
-    {"use": "MR",       "as": "Mr2",  "bind": {"POLECAT_OBSERVE": "Pol2", "REFINERY_IN": "Ref.MR_NOTIFY2"}},
-    {"use": "Worktree", "as": "Wt1",  "bind": {"CLEAN": "Lnd.CLEAN1"}},
-    {"use": "Worktree", "as": "Wt2",  "bind": {"CLEAN": "Lnd.CLEAN2"}},
-    {"use": "Hook",     "as": "Hk1",  "bind": {"AGENT": "Pol1.HOOK_IN"}},
-    {"use": "Hook",     "as": "Hk2",  "bind": {"AGENT": "Pol2.HOOK_IN"}}
+
+    {"use": "Refinery", "as": "Ref",  "bind": {
+      "MERGE_READY1": "Lane1.MERGE_READY_OUT",
+      "MERGE_READY2": "Lane2.MERGE_READY_OUT",
+      "MR_NOTIFY1":   "Lane1.REFINERY_IN",
+      "MR_NOTIFY2":   "Lane2.REFINERY_IN"
+    }},
+
+    {"use": "Landing",  "as": "Lnd",  "bind": {
+      "CLEAN1":         "Lane1.CLEAN_IN",
+      "CLEAN2":         "Lane2.CLEAN_IN",
+      "CONVOY_OBSERVE": "Con",
+      "WT1_OBSERVE":    "Lane1.Wt",
+      "WT2_OBSERVE":    "Lane2.Wt"
+    }},
+
+    {"use": "Lane", "as": "Lane1", "bind": {
+      "SLING_TO_ISSUE":   "Fed.SLING1_ISSUE",
+      "SLING_TO_POLECAT": "Fed.SLING1_POL",
+      "MERGE_READY_OUT":  "Ref.MERGE_READY1",
+      "REFINERY_IN":      "Ref.MR_NOTIFY1",
+      "CLEAN_IN":         "Lnd.CLEAN1"
+    }},
+
+    {"use": "Lane", "as": "Lane2", "bind": {
+      "SLING_TO_ISSUE":   "Fed.SLING2_ISSUE",
+      "SLING_TO_POLECAT": "Fed.SLING2_POL",
+      "MERGE_READY_OUT":  "Ref.MERGE_READY2",
+      "REFINERY_IN":      "Ref.MR_NOTIFY2",
+      "CLEAN_IN":         "Lnd.CLEAN2"
+    }}
   ],
 
   "invariants": [
     {
       "id": "NormalLandMeansWorkIntegrated",
-      "description": "CRITICAL. At Landed, both issues Closed and both MRs Merged. Honest because MR can only reach Merged via Refinery sending the Merged event.",
-      "expression": "Con.convoy # Con.Landed \\/ (Iss1.issue = Iss1.Closed /\\ Iss2.issue = Iss2.Closed /\\ Mr1.mR = Mr1.Merged /\\ Mr2.mR = Mr2.Merged)",
+      "description": "CRITICAL. At Landed, both issues Closed and both MRs Merged. Honest because MR can only reach Merged via Refinery sending the MergeMR event.",
+      "expression": "Con.convoy # Con.Landed \\/ (Lane1.Iss.issue = Lane1.Iss.Closed /\\ Lane2.Iss.issue = Lane2.Iss.Closed /\\ Lane1.Mr.mR = Lane1.Mr.Merged /\\ Lane2.Mr.mR = Lane2.Mr.Merged)",
       "severity": "critical"
     },
     {
       "id": "PolecatsIdleAtLanding",
       "description": "CRITICAL. At Landed, both polecats Idle.",
-      "expression": "Con.convoy # Con.Landed \\/ (Pol1.polecat = Pol1.Idle /\\ Pol2.polecat = Pol2.Idle)",
+      "expression": "Con.convoy # Con.Landed \\/ (Lane1.Pol.polecat = Lane1.Pol.Idle /\\ Lane2.Pol.polecat = Lane2.Pol.Idle)",
       "severity": "critical"
     },
     {
       "id": "WorktreeCleanupHappensOnLand",
       "description": "CRITICAL. At any landed state, both worktrees Cleaned.",
-      "expression": "(Con.convoy # Con.Landed /\\ Con.convoy # Con.LandedForce) \\/ (Wt1.worktree = Wt1.Cleaned /\\ Wt2.worktree = Wt2.Cleaned)",
+      "expression": "(Con.convoy # Con.Landed /\\ Con.convoy # Con.LandedForce) \\/ (Lane1.Wt.worktree = Lane1.Wt.Cleaned /\\ Lane2.Wt.worktree = Lane2.Wt.Cleaned)",
       "severity": "critical"
     },
     {

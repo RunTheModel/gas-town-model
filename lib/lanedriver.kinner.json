@@ -1,0 +1,45 @@
+{
+  "name": "LaneDriver",
+  "version": "0.1.0",
+  "description": "Stub coordinator used by lane-smoke.kinner.json to drive a Lane composite through one full cycle without dragging in Mayor/Convoy/Feeder/Refinery/Landing. Impersonates Feeder (slings), Refinery (MR notifies), and Landing (clean) all in one actor.",
+
+  "ports": {
+    "SLING_ISSUE":  { "direction": "out", "description": "sling to lane's Issue. Tagged 'Sling'." },
+    "SLING_POL":    { "direction": "out", "description": "sling to lane's Polecat. Tagged 'Sling'." },
+    "MERGE_READY":  { "direction": "in",  "description": "polecat signals merge-ready. Tagged 'MergeReady'." },
+    "REFINERY":     { "direction": "out", "description": "drives MR through Processing/Merged. Tagged with the matching message." },
+    "CLEAN":        { "direction": "out", "description": "request worktree clean. Tagged 'Clean'." }
+  },
+
+  "actors": [
+    {
+      "name": "LaneDriver",
+      "owner": "Stub coordinator. Drives the lane through one full cycle.",
+      "initialState": "Start",
+      "states": ["Start", "SlungIssue", "Slung", "Refining1", "Refining2", "Cleaning", "Done"],
+      "triples": [
+        {"currentState": "Start",      "event": "sling lane's issue",                        "newState": "SlungIssue",
+         "isSend": true, "sendTo": "SLING_ISSUE", "tag": "Sling"},
+
+        {"currentState": "SlungIssue", "event": "sling lane's polecat (channel-driven path)", "newState": "Slung",
+         "isSend": true, "sendTo": "SLING_POL", "tag": "Sling"},
+
+        {"currentState": "Slung",      "event": "polecat signaled MergeReady; advance MR",   "newState": "Refining1",
+         "isReceive": true, "receiveFrom": "MERGE_READY", "tag": "MergeReady"},
+
+        {"currentState": "Refining1", "event": "MR Ready -> Processing",                     "newState": "Refining2",
+         "isSend": true, "sendTo": "REFINERY", "tag": "ClaimMR"},
+
+        {"currentState": "Refining2", "event": "MR Processing -> Merged",                    "newState": "Cleaning",
+         "isSend": true, "sendTo": "REFINERY", "tag": "MergeMR"},
+
+        {"currentState": "Cleaning",   "event": "request worktree cleanup",                  "newState": "Done",
+         "isSend": true, "sendTo": "CLEAN", "tag": "Clean"},
+
+        {"currentState": "Done",       "event": "terminal",                                  "newState": "Done"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

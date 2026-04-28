@@ -1,0 +1,64 @@
+{
+  "name": "Lane",
+  "version": "0.1.0",
+  "description": "Composite library component bundling one work-coordination 'lane' -- the per-polecat slice of convoy-lands. Five inner components: Hook (PreCompact firer), Polecat (work-coord agent), Issue (the work bead), MR (merge result), Worktree (filesystem checkout). Internally wires the observe edges (Polecat<->Issue, MR observes Polecat) and the Hook->Polecat channel. Externally exposes the boundaries to the rest of the convoy-lands ensemble: SLING_TO_ISSUE in (Feeder slings to this lane's Issue), MERGE_READY_OUT out (Polecat tells Refinery this lane's work is ready), REFINERY_IN in (Refinery responds about this lane's MR), CLEAN_IN in (Landing cleans this lane's worktree).\n\nReplaces the per-instance enumeration {Iss1, Pol1, Mr1, Wt1, Hk1} + {Iss2, Pol2, Mr2, Wt2, Hk2} that convoy-lands does today: each lane bundles itself, host instantiates Lane1, Lane2 and wires only the lane-level boundaries.\n\nNote: Polecat's SLING in-port is bound to a Lane external port SLING_TO_POLECAT. The host typically wires both SLING_TO_ISSUE and SLING_TO_POLECAT to the same Feeder out-port (the channel-driven Polecat-advance path is redundant given the observe-driven path, but Polecat exposes both so the in-port must be wired to satisfy E009).",
+
+  "ports": {
+    "SLING_TO_ISSUE": {
+      "direction": "in",
+      "description": "Feeder slings work to this lane's Issue. Forwarded to Iss.SLING."
+    },
+    "SLING_TO_POLECAT": {
+      "direction": "in",
+      "description": "Feeder also slings to this lane's Polecat (channel-driven advance path; redundant with observe-driven, but Polecat.SLING must be bound). Forwarded to Pol.SLING."
+    },
+    "MERGE_READY_OUT": {
+      "direction": "out",
+      "description": "Polecat signals Refinery that this lane's work is complete. Forwarded from Pol.MERGE_READY."
+    },
+    "REFINERY_IN": {
+      "direction": "in",
+      "description": "Refinery dispatches MR processing for this lane. Forwarded to Mr.REFINERY_IN."
+    },
+    "CLEAN_IN": {
+      "direction": "in",
+      "description": "Landing requests this lane's worktree be cleaned. Forwarded to Wt.CLEAN."
+    }
+  },
+
+  "actors": [],
+
+  "components": [
+    {"use": "Hook", "as": "Hk",
+     "bind": {
+       "AGENT": "Pol.HOOK_IN"
+     }},
+
+    {"use": "Polecat", "as": "Pol",
+     "bind": {
+       "SLING":         "SLING_TO_POLECAT",
+       "HOOK_IN":       "Hk.AGENT",
+       "MERGE_READY":   "MERGE_READY_OUT",
+       "ISSUE_OBSERVE": "Iss"
+     }},
+
+    {"use": "Issue", "as": "Iss",
+     "bind": {
+       "SLING":            "SLING_TO_ISSUE",
+       "POLECAT_OBSERVE":  "Pol"
+     }},
+
+    {"use": "MR", "as": "Mr",
+     "bind": {
+       "POLECAT_OBSERVE": "Pol",
+       "REFINERY_IN":     "REFINERY_IN"
+     }},
+
+    {"use": "Worktree", "as": "Wt",
+     "bind": {
+       "CLEAN": "CLEAN_IN"
+     }}
+  ],
+
+  "invariants": []
+}

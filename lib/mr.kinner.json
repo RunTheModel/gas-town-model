@@ -12,7 +12,7 @@
     },
     "REFINERY_IN": {
       "direction": "in",
-      "description": "receives Processing and Merged events from the Refinery. Tagged 'Processing' and 'Merged'."
+      "description": "receives claim and merge events from the Refinery. Tagged 'ClaimMR' (refinery claims this MR for processing) and 'MergeMR' (refinery completed the merge). Tags renamed 2026-04-27 to avoid collision with the same-named state CONSTANTs in INSTANCE WITH substitution -- see backlog 150."
     }
   },
 
@@ -24,8 +24,8 @@
       "states": ["Absent", "Ready", "Processing", "Merged"],
       "triples": [
         {"currentState": "Absent",     "event": "polecat done: MR enters merge queue",       "newState": "Ready",      "guard": "polecatState = POLECAT_OBSERVE_Done"},
-        {"currentState": "Ready",      "event": "refinery claims this MR for processing",    "newState": "Processing", "isReceive": true, "receiveFrom": "REFINERY_IN", "tag": "Processing"},
-        {"currentState": "Processing", "event": "refinery merged this MR",                   "newState": "Merged",     "isReceive": true, "receiveFrom": "REFINERY_IN", "tag": "Merged"},
+        {"currentState": "Ready",      "event": "refinery claims this MR for processing",    "newState": "Processing", "isReceive": true, "receiveFrom": "REFINERY_IN", "tag": "ClaimMR"},
+        {"currentState": "Processing", "event": "refinery merged this MR",                   "newState": "Merged",     "isReceive": true, "receiveFrom": "REFINERY_IN", "tag": "MergeMR"},
         {"currentState": "Merged",     "event": "terminal",                                  "newState": "Merged"}
       ]
     }

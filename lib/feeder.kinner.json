@@ -1,17 +1,13 @@
 {
   "name": "Feeder",
-  "version": "0.1.0",
-  "description": "Library component. The continuation feeder -- dispatches slings to issues in non-deterministic order. Two-issue capacity (SLING1, SLING2 out-ports). Observes convoy state to know when to start dispatching. N-issue generalization requires more out-ports.",
+  "version": "0.2.0",
+  "description": "Library component. The continuation feeder -- dispatches slings to issues and polecats in non-deterministic order. Two-lane capacity. Each dispatch fires the issue's SLING and the polecat's SLING atomically (via raise) so a lane gets both ends of its work assignment in one transition. The polecat-channel-driven advance path is option C (existing in Polecat as of v0.2.1); pre-v0.2 Feeder fanned a single port to two recipients which produced TLC UNCHANGED warnings -- this version sends explicitly to four ports.\n\nObserves convoy state to know when to start dispatching.",
 
   "ports": {
-    "SLING1": {
-      "direction": "out",
-      "description": "sends Sling to the first issue. Tagged 'Sling'."
-    },
-    "SLING2": {
-      "direction": "out",
-      "description": "sends Sling to the second issue. Tagged 'Sling'."
-    },
+    "SLING1_ISSUE": { "direction": "out", "description": "sling to lane 1's Issue. Tagged 'Sling'." },
+    "SLING1_POL":   { "direction": "out", "description": "sling to lane 1's Polecat (atomic with SLING1_ISSUE via raise). Tagged 'Sling'." },
+    "SLING2_ISSUE": { "direction": "out", "description": "sling to lane 2's Issue. Tagged 'Sling'." },
+    "SLING2_POL":   { "direction": "out", "description": "sling to lane 2's Polecat (atomic with SLING2_ISSUE via raise). Tagged 'Sling'." },
     "CONVOY_OBSERVE": {
       "direction": "observe",
       "variable": "convoyState",
@@ -23,14 +19,28 @@
   "actors": [
     {
       "name": "Feeder",
-      "owner": "Parallel feeder. Non-deterministic dispatch order per the parallel-feeder fix from the gastown-guide monolith.",
+      "owner": "Parallel feeder. Non-deterministic dispatch order. Each step is an atomic two-port send (issue + polecat) to one lane.",
       "initialState": "Idle",
       "states": ["Idle", "Slung1Only", "Slung2Only", "BothSlung"],
       "triples": [
-        {"currentState": "Idle",       "event": "dispatch issue1 first",  "newState": "Slung1Only", "isSend": true, "sendTo": "SLING1", "tag": "Sling", "guard": "convoyState = CONVOY_OBSERVE_Open"},
-        {"currentState": "Idle",       "event": "dispatch issue2 first",  "newState": "Slung2Only", "isSend": true, "sendTo": "SLING2", "tag": "Sling", "guard": "convoyState = CONVOY_OBSERVE_Open"},
-        {"currentState": "Slung1Only", "event": "dispatch issue2 too",    "newState": "BothSlung",  "isSend": true, "sendTo": "SLING2", "tag": "Sling"},
-        {"currentState": "Slung2Only", "event": "dispatch issue1 too",    "newState": "BothSlung",  "isSend": true, "sendTo": "SLING1", "tag": "Sling"},
+        {"currentState": "Idle",       "event": "dispatch lane 1 first",  "newState": "Slung1Only",
+         "isSend": true, "sendTo": "SLING1_ISSUE", "tag": "Sling",
+         "raise": {"to": "SLING1_POL", "tag": "Sling"},
+         "guard": "convoyState = CONVOY_OBSERVE_Open"},
+
+        {"currentState": "Idle",       "event": "dispatch lane 2 first",  "newState": "Slung2Only",
+         "isSend": true, "sendTo": "SLING2_ISSUE", "tag": "Sling",
+         "raise": {"to": "SLING2_POL", "tag": "Sling"},
+         "guard": "convoyState = CONVOY_OBSERVE_Open"},
+
+        {"currentState": "Slung1Only", "event": "dispatch lane 2 too",    "newState": "BothSlung",
+         "isSend": true, "sendTo": "SLING2_ISSUE", "tag": "Sling",
+         "raise": {"to": "SLING2_POL", "tag": "Sling"}},
+
+        {"currentState": "Slung2Only", "event": "dispatch lane 1 too",    "newState": "BothSlung",
+         "isSend": true, "sendTo": "SLING1_ISSUE", "tag": "Sling",
+         "raise": {"to": "SLING1_POL", "tag": "Sling"}},
+
         {"currentState": "BothSlung",  "event": "terminal",              "newState": "BothSlung"}
       ]
     }
