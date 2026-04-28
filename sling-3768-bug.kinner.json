@@ -56,8 +56,7 @@
 
     {"use": "Patrol", "as": "Ptl1", "fairness": "weak",
      "bind": {
-       "AGENT_OBSERVE": "Ag",
-       "INVOKE_SLING":  "Sl1.INVOKE"
+       "INVOKE_SLING":"Sl1.INVOKE"
      }},
 
     {"use": "Sling", "as": "Sl1", "fairness": "weak",
@@ -71,8 +70,7 @@
 
     {"use": "Patrol", "as": "Ptl2", "fairness": "weak",
      "bind": {
-       "AGENT_OBSERVE": "Ag",
-       "INVOKE_SLING":  "Sl2.INVOKE"
+       "INVOKE_SLING":"Sl2.INVOKE"
      }},
 
     {"use": "Sling", "as": "Sl2", "fairness": "weak",
@@ -86,8 +84,7 @@
 
     {"use": "Patrol", "as": "Ptl3", "fairness": "weak",
      "bind": {
-       "AGENT_OBSERVE": "Ag",
-       "INVOKE_SLING":  "Sl3.INVOKE"
+       "INVOKE_SLING":"Sl3.INVOKE"
      }},
 
     {"use": "Sling", "as": "Sl3", "fairness": "weak",
@@ -118,6 +115,15 @@
       "description": "CRITICAL. Per #3768: at most one bead of any (assignee, formula) tuple is in Hooked status at any time. Pairwise check across all three beads: no two same-formula beads are simultaneously Hooked. Bead1 and Bead2 share formulaId=1 -- both Hooked = violation. Bead3 has formulaId=2 -- being Hooked alongside one of {Bead1, Bead2} is allowed (cross-formula). The lock serializes the Slings but does not prevent the same-formula violation, demonstrating that the per-assignee lock is not the mechanism that should enforce singleton.",
       "expression": "(Bead1.formula # Bead2.formula \\/ Bead1.status # 1 \\/ Bead2.status # 1) /\\ (Bead1.formula # Bead3.formula \\/ Bead1.status # 1 \\/ Bead3.status # 1) /\\ (Bead2.formula # Bead3.formula \\/ Bead2.status # 1 \\/ Bead3.status # 1)",
       "severity": "critical"
+    }
+  ],
+
+  "properties": [
+    {
+      "id": "AllPatrolsEventuallyFire",
+      "description": "Liveness: under weak fairness on every component, every Patrol eventually fires its Sling. Proves the system makes progress -- the bug is a safety issue, not a liveness one. Even though some random Python traces get trapped in terminal self-loops, the TLA+ semantic with fairness guarantees every Patrol eventually transitions to Slung.",
+      "expression": "<>(Ptl1.patrolState = Ptl1.Slung) /\\ <>(Ptl2.patrolState = Ptl2.Slung) /\\ <>(Ptl3.patrolState = Ptl3.Slung)",
+      "severity": "high"
     }
   ]
 }

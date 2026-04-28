@@ -9,7 +9,7 @@ from kinner_runtime import Component, Transition
 
 
 class SlingWithCheck(Component):
-    """gt sling subcommand WITH proposed fix. Seven states: Idle, AcquiringLock, ClosingSibling, Hooking, HookSent, Releasing, Done. The HookSent state is the synchronization gate -- Sling waits for the target to actually transition to Hooked (TARGET_OBSERVE) before releasing the lock, mirroring real synchronous hookBeadWithRetry semantics."""
+    """gt sling subcommand WITH proposed fix. Branches at AcquiringLock based on sibling state: send Close only if sibling Hooked, else skip to Hooking directly."""
 
     initial_state = 'Idle'
     state_constants = ('Idle', 'AcquiringLock', 'ClosingSibling', 'Hooking', 'HookSent', 'Releasing', 'Done',)
@@ -34,7 +34,7 @@ _TRIPLES = [
         send_tag='Acquire',
     ),
     Transition(
-        name='SlingWithCheck_LockGrantedSendCloseToSiblingProposedPreconditionStep',
+        name='SlingWithCheck_LockGrantedSiblingIsHookedSendClose',
         from_state='AcquiringLock',
         to_state='ClosingSibling',
         kind='send_receive',
@@ -42,13 +42,23 @@ _TRIPLES = [
         recv_tag='Granted',
         send_port='CLOSE_OUT',
         send_tag='Close',
+        guard_fn=lambda self: (self._observed["SIBLING_OBSERVE"].state == 'Hooked'),
     ),
     Transition(
-        name='SlingWithCheck_SiblingNoLongerHookedSafeToHookTarget',
+        name='SlingWithCheck_LockGrantedNoSiblingHookedProceedDirectlyToHooking',
+        from_state='AcquiringLock',
+        to_state='Hooking',
+        kind='receive',
+        recv_port='LOCK_GRANTED_IN',
+        recv_tag='Granted',
+        guard_fn=lambda self: (self._observed["SIBLING_OBSERVE"].state != 'Hooked'),
+    ),
+    Transition(
+        name='SlingWithCheck_SiblingCloseDeliveredSiblingClosedProceedToHooking',
         from_state='ClosingSibling',
         to_state='Hooking',
         kind='local',
-        guard_fn=lambda self: (self._observed["SIBLING_OBSERVE"].state != 'Hooked'),
+        guard_fn=lambda self: (self._observed["SIBLING_OBSERVE"].state == 'Closed'),
     ),
     Transition(
         name='SlingWithCheck_HookBeadWithRetryOnTargetBeadSlingGo918',

@@ -104,9 +104,6 @@ class Sling3768Bug(Application):
         self._channel(self.sl3, 'HOOK_OUT', self.bead3, 'HOOK')
         self._observe(self.hk, 'AGENT_OBSERVE', self.ag)
         self._observe(self.cyc, 'MAILBOX_OBSERVE', self.mb)
-        self._observe(self.ptl1, 'AGENT_OBSERVE', self.ag)
-        self._observe(self.ptl2, 'AGENT_OBSERVE', self.ag)
-        self._observe(self.ptl3, 'AGENT_OBSERVE', self.ag)
 
     @classmethod
     def main(cls, argv: list[str] | None = None) -> int:

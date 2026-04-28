@@ -95,10 +95,8 @@ class Sling3768Fix(Application):
         self._channel(self.sl2, 'HOOK_OUT', self.bead2, 'HOOK')
         self._observe(self.hk, 'AGENT_OBSERVE', self.ag)
         self._observe(self.cyc, 'MAILBOX_OBSERVE', self.mb)
-        self._observe(self.ptl1, 'AGENT_OBSERVE', self.ag)
         self._observe(self.sl1, 'SIBLING_OBSERVE', self.bead2)
         self._observe(self.sl1, 'TARGET_OBSERVE', self.bead1)
-        self._observe(self.ptl2, 'AGENT_OBSERVE', self.ag)
         self._observe(self.sl2, 'SIBLING_OBSERVE', self.bead1)
         self._observe(self.sl2, 'TARGET_OBSERVE', self.bead2)
 

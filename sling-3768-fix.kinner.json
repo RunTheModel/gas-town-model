@@ -53,8 +53,7 @@
 
     {"use": "Patrol", "as": "Ptl1", "fairness": "weak",
      "bind": {
-       "AGENT_OBSERVE": "Ag",
-       "INVOKE_SLING":  "Sl1.INVOKE"
+       "INVOKE_SLING":"Sl1.INVOKE"
      }},
 
     {"use": "SlingWithCheck", "as": "Sl1", "fairness": "weak",
@@ -71,8 +70,7 @@
 
     {"use": "Patrol", "as": "Ptl2", "fairness": "weak",
      "bind": {
-       "AGENT_OBSERVE": "Ag",
-       "INVOKE_SLING":  "Sl2.INVOKE"
+       "INVOKE_SLING":"Sl2.INVOKE"
      }},
 
     {"use": "SlingWithCheck", "as": "Sl2", "fairness": "weak",
@@ -108,6 +106,21 @@
       "description": "CRITICAL. Per #3768: at most one bead of any (assignee, formula) tuple is in Hooked status at any time. Should HOLD with the proposed fix in place. Both beads share formulaId=1; the SlingWithCheck close-step + observe-gate ensures no interleaving exists where both reach Hooked simultaneously.",
       "expression": "Bead1.beadCloseableState # Bead1.Hooked \\/ Bead2.beadCloseableState # Bead2.Hooked",
       "severity": "critical"
+    }
+  ],
+
+  "properties": [
+    {
+      "id": "BothSlingsEventuallyComplete",
+      "description": "Liveness: both Slings eventually reach Done under weak fairness. Proves the close-step + hook-landed gates don't deadlock and don't starve any Sling. If the gate logic were over-restrictive, this would fail with a counterexample showing one Sling stuck waiting forever.",
+      "expression": "<>(Sl1.slingWithCheckState = Sl1.Done) /\\ <>(Sl2.slingWithCheckState = Sl2.Done)",
+      "severity": "high"
+    },
+    {
+      "id": "HookedBeadEventuallyAchieved",
+      "description": "Liveness: eventually one of the beads is Hooked. Proves the fix doesn't prevent hooking entirely -- the close-step closes EXISTING same-formula Hooked beads but doesn't pre-close the target. The HookedSingleton invariant + this liveness together require: at any moment AT MOST one Hooked, AND eventually AT LEAST one Hooked.",
+      "expression": "<>(Bead1.beadCloseableState = Bead1.Hooked \\/ Bead2.beadCloseableState = Bead2.Hooked)",
+      "severity": "high"
     }
   ]
 }

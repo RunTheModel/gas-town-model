@@ -9,13 +9,13 @@ from kinner_runtime import Component, Transition
 
 
 class Patrol(Component):
-    """Patrol scheduler. Pending until agent resumes; invokes gt sling once. After Slung, terminal."""
+    """Patrol scheduler. Fires Sling once when WF picks it; terminal Slung."""
 
     initial_state = 'Pending'
     state_constants = ('Pending', 'Slung',)
     _in_ports = ()
     _out_ports = ('INVOKE_SLING',)
-    _observe_ports = ('AGENT_OBSERVE',)
+    _observe_ports = ()
     _message_set = frozenset({'Sling'})
 
     def _build_transitions(self) -> list[Transition]:
@@ -24,13 +24,12 @@ class Patrol(Component):
 
 _TRIPLES = [
     Transition(
-        name='Patrol_AgentResumedInvokeGtSlingForTheSameFormulaAgent',
+        name='Patrol_PatrolInvokesGtSling',
         from_state='Pending',
         to_state='Slung',
         kind='send',
         send_port='INVOKE_SLING',
         send_tag='Sling',
-        guard_fn=lambda self: (self._observed["AGENT_OBSERVE"].state == 'Resumed'),
     ),
     Transition(
         name='Patrol_Terminal',

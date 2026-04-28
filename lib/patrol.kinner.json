@@ -1,15 +1,9 @@
 {
   "name": "Patrol",
-  "version": "0.3.0",
-  "description": "Library component. Models the patrol scheduler that re-invokes `gt sling` for the same formula+agent on each substrate cycle. Real implementation: witness/refinery patrol-cycle loops invoke `gt sling <patrol-formula> <agent>` to keep an active hooked-mol on the patrol agent (mol-deacon-patrol, mol-witness-patrol, mol-refinery-patrol).\n\nv0.3 (defense-doc P2.4): loose coupling. Each Patrol fires once when Agent is Resumed; multiple Patrol instances may all fire on the same Resumed window or interleave across cycles depending on TLC's exploration. The model preserves real gas-town's loose coupling -- patrols run on independent timers (witness/refinery loops), not synchronized with the substrate's compact cycles. Multiple Patrols composed in one project demonstrate accumulation across all Patrol fires regardless of which cycle they land in.",
+  "version": "0.5.0",
+  "description": "Library component. Models the patrol scheduler that invokes `gt sling` for the same formula+agent. Real implementation: witness/refinery patrol-cycle loops invoke `gt sling <patrol-formula> <agent>` to keep an active hooked-mol on the patrol agent (mol-deacon-patrol, mol-witness-patrol, mol-refinery-patrol).\n\nv0.5 (defense-doc liveness fix, take 3): Patrol no longer observes Agent state. The Pending->Slung fire is monotonically enabled, so WF_vars(Patrol_Step) guarantees firing.\n\nWhy this design path: v0.3 observed Agent=Resumed (oscillating enable, WF doesn't force firing). v0.4 added a latch (Pending -> Armed -> Slung), but the latch transition itself had the same oscillating-enable problem (Patrol could miss every Resumed visit). Without SF support in Kinner today, the only way to make WF force firing is to make the enable monotonic from initial state. v0.5 achieves this by dropping agent observation entirely.\n\nFidelity tradeoff: real witness/refinery patrols ARE driven by a scheduler that nominally watches agent state, but the timing isn't load-bearing for the #3768 bug -- the bug is about the close-step inside sling.go, not about when Patrol decides to fire. The model captures the bug regardless of Patrol's timing relative to the substrate. The substrate (Hook+Agent+HandoffCycle+Mailbox+Pane) still cycles for narrative completeness but doesn't gate Patrol firing.",
 
   "ports": {
-    "AGENT_OBSERVE": {
-      "direction": "observe",
-      "variable": "agentState",
-      "states": ["Resumed"],
-      "description": "watches the substrate Agent. Patrol fires when agent is Resumed (substrate cycle complete)."
-    },
     "INVOKE_SLING": {
       "direction": "out",
       "description": "invokes `gt sling`. Tagged 'Sling'."
@@ -19,18 +13,17 @@
   "actors": [
     {
       "name": "Patrol",
-      "owner": "Patrol scheduler. Pending until agent resumes; invokes gt sling once. After Slung, terminal.",
+      "owner": "Patrol scheduler. Fires Sling once when WF picks it; terminal Slung.",
       "initialState": "Pending",
       "states": ["Pending", "Slung"],
       "triples": [
         {
           "currentState": "Pending",
-          "event": "agent resumed: invoke gt sling for the same formula+agent",
+          "event": "patrol invokes gt sling",
           "newState": "Slung",
           "isSend": true,
           "sendTo": "INVOKE_SLING",
-          "tag": "Sling",
-          "guard": "agentState = AGENT_OBSERVE_Resumed"
+          "tag": "Sling"
         },
         {"currentState": "Slung", "event": "terminal", "newState": "Slung"}
       ]
