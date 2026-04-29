@@ -9,13 +9,13 @@ from kinner_runtime import Component, Transition
 
 
 class PrimeRecovery(Component):
-    """Single-shot self-heal sender. Fires Wake once when (Polecat=Parked AND Gate=Closed)."""
+    """Single-shot self-heal sender. Fires Wake once when (ParkedFile=Persisted AND Gate=Closed)."""
 
     initial_state = 'Pending'
     state_constants = ('Pending', 'Sent',)
     _in_ports = ()
     _out_ports = ('WAKE_OUT',)
-    _observe_ports = ('POLECAT_OBSERVE', 'GATE_OBSERVE',)
+    _observe_ports = ('PARKED_OBSERVE', 'GATE_OBSERVE',)
     _message_set = frozenset({'Wake'})
 
     def _build_transitions(self) -> list[Transition]:
@@ -24,13 +24,13 @@ class PrimeRecovery(Component):
 
 _TRIPLES = [
     Transition(
-        name='PrimeRecovery_SelfHealParkedPolecatClosedGateDetectedSendWake',
+        name='PrimeRecovery_SelfHealParkedFileOnDiskClosedGateDetectedSendWake',
         from_state='Pending',
         to_state='Sent',
         kind='send',
         send_port='WAKE_OUT',
         send_tag='Wake',
-        guard_fn=lambda self: (self._observed["POLECAT_OBSERVE"].state == 'Parked' and self._observed["GATE_OBSERVE"].state == 'Closed'),
+        guard_fn=lambda self: (self._observed["PARKED_OBSERVE"].state == 'Persisted' and self._observed["GATE_OBSERVE"].state == 'Closed'),
     ),
     Transition(
         name='PrimeRecovery_Terminal',

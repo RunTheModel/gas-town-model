@@ -1,0 +1,78 @@
+{
+  "name": "Gate3587SuccessorFix",
+  "messageSet": ["Park", "Wake", "Close", "Kill", "Write", "Sling", "MergeReady", "PreCompact"],
+  "description": "Issue #3587 successor-Deacon fix. Same as gate-3587-successor-bug.kinner.json plus PrimeRecovery. Verifies that the proposed `gt prime checkParkedWork` self-heal works even with TWO Deacons in the topology -- both can crash at WakeReady (the bug window), the closed gate is invisible to both successor sessions, but PrimeRecovery's observation of (ParkedFile=Persisted AND Gate=Closed) restores the polecat regardless.\n\nFan-in on Pol.WAKE_IN handles three potential senders (Dec1, Dec2, Pr) -- the compiler synthesizes the merge.",
+
+  "actors": [],
+
+  "components": [
+    {"use": "Polecat", "as": "Pol", "fairness": "weak",
+     "bind": {
+       "SLING":         "StubSling.OUT",
+       "HOOK_IN":       "StubHook.OUT",
+       "ISSUE_OBSERVE": "Iss",
+       "PARK_IN":       "Wl.PARK_OUT",
+       "WAKE_IN":       "Dec1.WAKE_OUT",
+       "WRITE_OUT":     "Pf.WRITE_IN"
+     }},
+
+    {"use": "Issue", "as": "Iss", "fairness": "weak",
+     "bind": {"SLING": "StubIss.OUT", "POLECAT_OBSERVE": "Pol"}},
+
+    {"use": "ParkedFile", "as": "Pf", "fairness": "weak",
+     "bind": {"WRITE_IN": "Pol.WRITE_OUT"}},
+
+    {"use": "WorkLoop", "as": "Wl", "fairness": "weak",
+     "bind": {"GATE_OBSERVE": "Gt", "PARK_OUT": "Pol.PARK_IN"}},
+
+    {"use": "Gate", "as": "Gt", "fairness": "weak",
+     "bind": {"CLOSE_IN": "Dec1.GATE_CLOSE_OUT"}},
+
+    {"use": "Deacon", "as": "Dec1", "fairness": "weak",
+     "bind": {
+       "GATE_CLOSE_OUT":  "Gt.CLOSE_IN",
+       "GATE_OBSERVE":    "Gt",
+       "POLECAT_OBSERVE": "Pol",
+       "WAKE_OUT":        "Pol.WAKE_IN",
+       "KILL_IN":         "Rpr1.KILL_OUT"
+     }},
+    {"use": "Reaper", "as": "Rpr1", "fairness": "weak",
+     "bind": {"KILL_OUT": "Dec1.KILL_IN"}},
+
+    {"use": "Deacon", "as": "Dec2", "fairness": "weak",
+     "bind": {
+       "GATE_CLOSE_OUT":  "Gt.CLOSE_IN",
+       "GATE_OBSERVE":    "Gt",
+       "POLECAT_OBSERVE": "Pol",
+       "WAKE_OUT":        "Pol.WAKE_IN",
+       "KILL_IN":         "Rpr2.KILL_OUT"
+     }},
+    {"use": "Reaper", "as": "Rpr2", "fairness": "weak",
+     "bind": {"KILL_OUT": "Dec2.KILL_IN"}},
+
+    {"use": "PrimeRecovery", "as": "Pr", "fairness": "weak",
+     "bind": {
+       "PARKED_OBSERVE": "Pf",
+       "GATE_OBSERVE":   "Gt",
+       "WAKE_OUT":       "Pol.WAKE_IN"
+     }},
+
+    {"use": "NeverFires", "as": "StubSling", "fairness": "weak",
+     "bind": {}},
+    {"use": "NeverFires", "as": "StubHook", "fairness": "weak",
+     "bind": {}},
+    {"use": "NeverFires", "as": "StubIss", "fairness": "weak",
+     "bind": {}}
+  ],
+
+  "invariants": [],
+
+  "properties": [
+    {
+      "id": "PolecatEventuallyWorking",
+      "description": "Liveness: parked polecat eventually reaches Working. Holds because PrimeRecovery's self-heal fires regardless of how many Deacons crash.",
+      "expression": "<>(Pol.polecatState = Pol.Working)",
+      "severity": "high"
+    }
+  ]
+}

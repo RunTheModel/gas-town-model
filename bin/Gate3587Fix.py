@@ -16,9 +16,11 @@ from Deacon import Deacon
 from Gate import Gate
 from Issue import Issue
 from NeverFires import NeverFires
-from Parker import Parker
+from ParkedFile import ParkedFile
 from Polecat import Polecat
 from PrimeRecovery import PrimeRecovery
+from Reaper import Reaper
+from WorkLoop import WorkLoop
 
 
 @dataclass(frozen=True)
@@ -39,14 +41,18 @@ class Gate3587Fix(Application):
         super().__init__(seed=seed)
         self.pol = Polecat()
         self._register('Pol', self.pol)
+        self.pf = ParkedFile()
+        self._register('Pf', self.pf)
         self.iss = Issue()
         self._register('Iss', self.iss)
-        self.pkr = Parker()
-        self._register('Pkr', self.pkr)
+        self.wl = WorkLoop()
+        self._register('Wl', self.wl)
         self.gt = Gate()
         self._register('Gt', self.gt)
         self.dec = Deacon()
         self._register('Dec', self.dec)
+        self.rpr = Reaper()
+        self._register('Rpr', self.rpr)
         self.pr = PrimeRecovery()
         self._register('Pr', self.pr)
         self.stubSling = NeverFires()
@@ -65,13 +71,17 @@ class Gate3587Fix(Application):
     def _bind(self) -> None:
         self._channel(self.pol, 'SLING', self.stubSling, 'OUT')
         self._channel(self.pol, 'HOOK_IN', self.stubHook, 'OUT')
-        self._channel(self.pol, 'PARK_IN', self.pkr, 'PARK_OUT')
+        self._channel(self.pol, 'PARK_IN', self.wl, 'PARK_OUT')
+        self._channel(self.pol, 'WRITE_OUT', self.pf, 'WRITE_IN')
         self._channel(self.iss, 'SLING', self.stubIss, 'OUT')
         self._channel(self.gt, 'CLOSE_IN', self.dec, 'GATE_CLOSE_OUT')
+        self._channel(self.dec, 'KILL_IN', self.rpr, 'KILL_OUT')
         self._observe(self.pol, 'ISSUE_OBSERVE', self.iss)
         self._observe(self.iss, 'POLECAT_OBSERVE', self.pol)
+        self._observe(self.wl, 'GATE_OBSERVE', self.gt)
         self._observe(self.dec, 'GATE_OBSERVE', self.gt)
-        self._observe(self.pr, 'POLECAT_OBSERVE', self.pol)
+        self._observe(self.dec, 'POLECAT_OBSERVE', self.pol)
+        self._observe(self.pr, 'PARKED_OBSERVE', self.pf)
         self._observe(self.pr, 'GATE_OBSERVE', self.gt)
         self._fanin([(self.dec, 'WAKE_OUT'), (self.pr, 'WAKE_OUT')], self.pol, 'WAKE_IN')
 

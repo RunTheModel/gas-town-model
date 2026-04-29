@@ -14,9 +14,9 @@ class Polecat(Component):
     initial_state = 'Absent'
     state_constants = ('Absent', 'Working', 'HandlingHook', 'Done', 'Idle', 'Parked',)
     _in_ports = ('SLING', 'HOOK_IN', 'PARK_IN', 'WAKE_IN',)
-    _out_ports = ('MERGE_READY',)
+    _out_ports = ('MERGE_READY', 'WRITE_OUT',)
     _observe_ports = ('ISSUE_OBSERVE',)
-    _message_set = frozenset({'MergeReady', 'Park', 'PreCompact', 'Sling', 'Wake'})
+    _message_set = frozenset({'MergeReady', 'Park', 'PreCompact', 'Sling', 'Wake', 'Write'})
 
     def _build_transitions(self) -> list[Transition]:
         return _TRIPLES
@@ -76,12 +76,14 @@ _TRIPLES = [
         kind='local',
     ),
     Transition(
-        name='Polecat_PolecatParksOnAGateGate3587Path',
+        name='Polecat_PolecatParksOnAGateGate3587PathPersistsParkedStateToDisk',
         from_state='Absent',
         to_state='Parked',
-        kind='receive',
+        kind='send_receive',
         recv_port='PARK_IN',
         recv_tag='Park',
+        send_port='WRITE_OUT',
+        send_tag='Write',
     ),
     Transition(
         name='Polecat_PolecatReceivesWakeGtGateWakeOrPrimeSelfHeal',

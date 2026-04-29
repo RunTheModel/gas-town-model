@@ -1,0 +1,79 @@
+{
+  "name": "Gate3587MultiBug",
+  "messageSet": ["Park", "Wake", "Close", "Kill", "Write", "Sling", "MergeReady", "PreCompact"],
+  "description": "Issue #3587 multi-pair scaling. Two Polecat/Gate/Deacon triples running independently. Each Deacon can crash via its own Reaper. Demonstrates that the bug compounds linearly: each pair has its own crash window, and partial-success outcomes (one polecat resumes, the other stays Parked) are reachable.\n\nNo PrimeRecovery -- verifies that without the fix, BOTH polecats can be stuck simultaneously, OR one stuck while the other resumes (asymmetric crash outcomes).\n\nLiveness property: every polecat eventually reaches Working. Fails when either Deacon's WakeReady -> Crashed branch is picked.",
+
+  "actors": [],
+
+  "components": [
+    {"use": "Polecat", "as": "Pol1", "fairness": "weak",
+     "bind": {
+       "SLING":         "Stub.OUT",
+       "HOOK_IN":       "Stub.OUT",
+       "ISSUE_OBSERVE": "Iss1",
+       "PARK_IN":       "Wl1.PARK_OUT",
+       "WAKE_IN":       "Dec1.WAKE_OUT",
+       "WRITE_OUT":     "Pf1.WRITE_IN"
+     }},
+    {"use": "Issue", "as": "Iss1", "fairness": "weak",
+     "bind": {"SLING": "Stub.OUT", "POLECAT_OBSERVE": "Pol1"}},
+    {"use": "ParkedFile", "as": "Pf1", "fairness": "weak",
+     "bind": {"WRITE_IN": "Pol1.WRITE_OUT"}},
+    {"use": "WorkLoop", "as": "Wl1", "fairness": "weak",
+     "bind": {"GATE_OBSERVE": "Gt1", "PARK_OUT": "Pol1.PARK_IN"}},
+    {"use": "Gate", "as": "Gt1", "fairness": "weak",
+     "bind": {"CLOSE_IN": "Dec1.GATE_CLOSE_OUT"}},
+    {"use": "Deacon", "as": "Dec1", "fairness": "weak",
+     "bind": {
+       "GATE_CLOSE_OUT":  "Gt1.CLOSE_IN",
+       "GATE_OBSERVE":    "Gt1",
+       "POLECAT_OBSERVE": "Pol1",
+       "WAKE_OUT":        "Pol1.WAKE_IN",
+       "KILL_IN":         "Rpr1.KILL_OUT"
+     }},
+    {"use": "Reaper", "as": "Rpr1", "fairness": "weak",
+     "bind": {"KILL_OUT": "Dec1.KILL_IN"}},
+
+    {"use": "Polecat", "as": "Pol2", "fairness": "weak",
+     "bind": {
+       "SLING":         "Stub.OUT",
+       "HOOK_IN":       "Stub.OUT",
+       "ISSUE_OBSERVE": "Iss2",
+       "PARK_IN":       "Wl2.PARK_OUT",
+       "WAKE_IN":       "Dec2.WAKE_OUT",
+       "WRITE_OUT":     "Pf2.WRITE_IN"
+     }},
+    {"use": "Issue", "as": "Iss2", "fairness": "weak",
+     "bind": {"SLING": "Stub.OUT", "POLECAT_OBSERVE": "Pol2"}},
+    {"use": "ParkedFile", "as": "Pf2", "fairness": "weak",
+     "bind": {"WRITE_IN": "Pol2.WRITE_OUT"}},
+    {"use": "WorkLoop", "as": "Wl2", "fairness": "weak",
+     "bind": {"GATE_OBSERVE": "Gt2", "PARK_OUT": "Pol2.PARK_IN"}},
+    {"use": "Gate", "as": "Gt2", "fairness": "weak",
+     "bind": {"CLOSE_IN": "Dec2.GATE_CLOSE_OUT"}},
+    {"use": "Deacon", "as": "Dec2", "fairness": "weak",
+     "bind": {
+       "GATE_CLOSE_OUT":  "Gt2.CLOSE_IN",
+       "GATE_OBSERVE":    "Gt2",
+       "POLECAT_OBSERVE": "Pol2",
+       "WAKE_OUT":        "Pol2.WAKE_IN",
+       "KILL_IN":         "Rpr2.KILL_OUT"
+     }},
+    {"use": "Reaper", "as": "Rpr2", "fairness": "weak",
+     "bind": {"KILL_OUT": "Dec2.KILL_IN"}},
+
+    {"use": "NeverFires", "as": "Stub", "fairness": "weak",
+     "bind": {}}
+  ],
+
+  "invariants": [],
+
+  "properties": [
+    {
+      "id": "BothPolecatsEventuallyWorking",
+      "description": "Liveness: BOTH parked polecats eventually reach Working. Fails in the bug spec because either Deacon's WakeReady -> Crashed branch leaves its polecat stranded.",
+      "expression": "<>(Pol1.polecatState = Pol1.Working) /\\ <>(Pol2.polecatState = Pol2.Working)",
+      "severity": "high"
+    }
+  ]
+}

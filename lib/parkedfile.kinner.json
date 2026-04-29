@@ -1,0 +1,34 @@
+{
+  "name": "ParkedFile",
+  "version": "0.1.0",
+  "description": "Library component. Models the on-disk parked-<agent>.json file that gastown writes when a polecat parks (real source: `gt park` or equivalent). The file is the persistent record that survives both the Polecat process and the Deacon session: once written, it stays Persisted until explicitly cleaned up.\n\nLifecycle: NotPersisted (initial) -> Persisted (received Write). No transition back; the file isn't auto-removed in the bug-window timeframe. Real cleanup happens on `gt resume` after a successful unpark, but that's downstream of the bug we model.\n\nThis component is the load-bearing piece for the gastown #3587 fix: PrimeRecovery (the proposed `checkParkedWork` in `gt prime`) reads ParkedFile.Persisted as evidence that there's parked work to recover. Without ParkedFile, the fix would be observing in-memory state, which doesn't match the proposed real-world implementation. See gate-3587-defense.md P1.3.",
+
+  "ports": {
+    "WRITE_IN": {
+      "direction": "in",
+      "description": "receives a Write message from Polecat (or from `gt park`) when the polecat parks. Tagged 'Write'. Transitions NotPersisted -> Persisted."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "ParkedFile",
+      "owner": "Single-shot persistence record. NotPersisted -> Persisted on Write receive.",
+      "initialState": "NotPersisted",
+      "states": ["NotPersisted", "Persisted"],
+      "triples": [
+        {
+          "currentState": "NotPersisted",
+          "event": "Polecat parks; gt park writes parked-<agent>.json",
+          "newState": "Persisted",
+          "isReceive": true,
+          "receiveFrom": "WRITE_IN",
+          "tag": "Write"
+        },
+        {"currentState": "Persisted", "event": "terminal: file persists until cleanup (out of scope)", "newState": "Persisted"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

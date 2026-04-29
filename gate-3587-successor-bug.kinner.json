@@ -1,0 +1,71 @@
+{
+  "name": "Gate3587SuccessorBug",
+  "messageSet": ["Park", "Wake", "Close", "Kill", "Write", "Sling", "MergeReady", "PreCompact"],
+  "description": "Issue #3587 successor-Deacon scaling. Same single-pair topology as gate-3587-bug.kinner.json, plus a SECOND Deacon (Dec2) instance with its own Reaper. Demonstrates that a successor Deacon session CAN'T recover the bug state because its `bd gate check` only acts on Gate=Open gates -- the closed gate left behind by the crashed first Deacon is invisible.\n\nThe bug body (#3587) cites this filter as the load-bearing root cause: 'bd gate check only queries status=open gates. Once a gate is closed, it becomes invisible to new Deacon sessions.' The model encodes this as Deacon's Idle -> ClosingGate guard (gateState=Open). When Dec1 closes Gt and crashes, Gt=Closed, and Dec2's guard fails permanently.\n\nFan-in on Gt.CLOSE_IN (both Deacons could try to close) and Pol.WAKE_IN (both could send wake) is auto-synthesized by the compiler per backlog 074.\n\nLiveness violates as before -- both Deacons can crash via their Reapers, and the closed gate prevents any successor recovery.",
+
+  "actors": [],
+
+  "components": [
+    {"use": "Polecat", "as": "Pol", "fairness": "weak",
+     "bind": {
+       "SLING":         "StubSling.OUT",
+       "HOOK_IN":       "StubHook.OUT",
+       "ISSUE_OBSERVE": "Iss",
+       "PARK_IN":       "Wl.PARK_OUT",
+       "WAKE_IN":       "Dec1.WAKE_OUT",
+       "WRITE_OUT":     "Pf.WRITE_IN"
+     }},
+
+    {"use": "Issue", "as": "Iss", "fairness": "weak",
+     "bind": {"SLING": "StubIss.OUT", "POLECAT_OBSERVE": "Pol"}},
+
+    {"use": "ParkedFile", "as": "Pf", "fairness": "weak",
+     "bind": {"WRITE_IN": "Pol.WRITE_OUT"}},
+
+    {"use": "WorkLoop", "as": "Wl", "fairness": "weak",
+     "bind": {"GATE_OBSERVE": "Gt", "PARK_OUT": "Pol.PARK_IN"}},
+
+    {"use": "Gate", "as": "Gt", "fairness": "weak",
+     "bind": {"CLOSE_IN": "Dec1.GATE_CLOSE_OUT"}},
+
+    {"use": "Deacon", "as": "Dec1", "fairness": "weak",
+     "bind": {
+       "GATE_CLOSE_OUT":  "Gt.CLOSE_IN",
+       "GATE_OBSERVE":    "Gt",
+       "POLECAT_OBSERVE": "Pol",
+       "WAKE_OUT":        "Pol.WAKE_IN",
+       "KILL_IN":         "Rpr1.KILL_OUT"
+     }},
+    {"use": "Reaper", "as": "Rpr1", "fairness": "weak",
+     "bind": {"KILL_OUT": "Dec1.KILL_IN"}},
+
+    {"use": "Deacon", "as": "Dec2", "fairness": "weak",
+     "bind": {
+       "GATE_CLOSE_OUT":  "Gt.CLOSE_IN",
+       "GATE_OBSERVE":    "Gt",
+       "POLECAT_OBSERVE": "Pol",
+       "WAKE_OUT":        "Pol.WAKE_IN",
+       "KILL_IN":         "Rpr2.KILL_OUT"
+     }},
+    {"use": "Reaper", "as": "Rpr2", "fairness": "weak",
+     "bind": {"KILL_OUT": "Dec2.KILL_IN"}},
+
+    {"use": "NeverFires", "as": "StubSling", "fairness": "weak",
+     "bind": {}},
+    {"use": "NeverFires", "as": "StubHook", "fairness": "weak",
+     "bind": {}},
+    {"use": "NeverFires", "as": "StubIss", "fairness": "weak",
+     "bind": {}}
+  ],
+
+  "invariants": [],
+
+  "properties": [
+    {
+      "id": "PolecatEventuallyWorking",
+      "description": "Liveness: under fairness, the parked polecat eventually reaches Working. Fails because the bug state (Polecat=Parked, Gt=Closed, Dec1=Crashed) is reachable, and Dec2 can't help (its Idle->ClosingGate guard requires gateState=Open, but the gate is already Closed).",
+      "expression": "<>(Pol.polecatState = Pol.Working)",
+      "severity": "high"
+    }
+  ]
+}

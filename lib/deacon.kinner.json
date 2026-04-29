@@ -1,7 +1,7 @@
 {
   "name": "Deacon",
-  "version": "0.1.0",
-  "description": "Library component. Models the Deacon session that runs `bd gate check` and `gt gate wake`. The two-step protocol -- close gate, then send wake -- is non-atomic; if the Deacon session dies between the two operations the wake is never sent and parked polecats wait indefinitely. See gastown #3587.\n\nFlow:\n  Idle -> ClosingGate (send Close to gate)\n  ClosingGate -> WakeReady (observe Gate=Closed, i.e. the close was processed)\n  WakeReady -> Done (send Wake to polecat)\n\nThe critical bug-window transition:\n  WakeReady -> Crashed (Deacon session dies after gate-close has landed but before wake-send fires)\n\nTLC explores both branches from WakeReady. The Crashed branch leaves the gate Closed, no wake in flight, Polecat permanently Parked -- the bug shape #3587 reports.\n\nReal sources: cmd/bd/gate.go:818 closeGate(), internal/cmd/gate.go:84 gt gate wake.",
+  "version": "0.3.0",
+  "description": "Library component. Models the Deacon session that runs `bd gate check` and `gt gate wake`. The two-step protocol -- close gate, then send wake -- is non-atomic; if the Deacon session dies between the two operations the wake is never sent and parked polecats wait indefinitely. See gastown #3587.\n\nFlow:\n  Idle -> ClosingGate (send Close to gate)\n  ClosingGate -> WakeReady (observe Gate=Closed, i.e. the close was processed)\n  WakeReady -> Done (send Wake to polecat)\n\nThe critical bug-window transition:\n  WakeReady -> Crashed (receive Kill on KILL_IN -- Deacon session dies after gate-close has landed but before wake-send fires)\n\nv0.2 (defense-doc P1.1): the crash is now triggered by an external Kill message on KILL_IN (typically wired from a Reaper component) rather than an actor-internal nondeterministic transition. This makes the crash semantic explicit -- the death is caused by an external SIGTERM/OOM/pane-close event, not by Deacon 'choosing' to crash.\n\nTLC explores both branches from WakeReady (receive Kill -> Crashed, or send Wake -> Done) when Kill is in flight. The Crashed branch leaves the gate Closed, no wake in flight, Polecat permanently Parked -- the bug shape #3587 reports.\n\nReal sources: cmd/bd/gate.go:818 closeGate(), internal/cmd/gate.go:84 gt gate wake.",
 
   "ports": {
     "GATE_CLOSE_OUT": {
@@ -12,11 +12,21 @@
       "direction": "observe",
       "variable": "gateState",
       "states": ["Open", "Closed"],
-      "description": "observe the gate's state to confirm the close landed before proceeding to send wake."
+      "description": "observe the gate's state. Used both to gate Idle -> ClosingGate (only act on Open gates -- mirrors `bd gate check` only querying status=open) AND to confirm the close landed before proceeding to send wake."
+    },
+    "POLECAT_OBSERVE": {
+      "direction": "observe",
+      "variable": "polecatState",
+      "states": ["Parked"],
+      "description": "observe the polecat's lifecycle state. v0.3: Idle -> ClosingGate is gated on observing polecat=Parked, mirroring real-world causality where the polecat has long since parked by the time Deacon's scheduled `bd gate check` runs. Without this gate, TLC could explore interleavings where Deacon races ahead of the WorkLoop's parking trigger -- producing a spurious counterexample that doesn't exist in real gastown."
     },
     "WAKE_OUT": {
       "direction": "out",
       "description": "send Wake to the parked polecat (gt gate wake). Tagged 'Wake'. The bug arises when this send is preempted by Deacon session death."
+    },
+    "KILL_IN": {
+      "direction": "in",
+      "description": "receives Kill from an external Reaper, modeling SIGTERM/OOM/pane-close. Tagged 'Kill'. Only consumed when Deacon is in WakeReady (the crash-window state); Kill arriving in other states sits in flight (no triple matches), modeling 'death only matters during the protocol's vulnerable window for this bug demonstration'."
     }
   },
 
@@ -29,8 +39,9 @@
       "triples": [
         {
           "currentState": "Idle",
-          "event": "bd gate check determined dep resolved; close the gate",
+          "event": "bd gate check finds polecat parked on an open gate; close it",
           "newState": "ClosingGate",
+          "guard": "polecatState = POLECAT_OBSERVE_Parked /\\ gateState = GATE_OBSERVE_Open",
           "isSend": true,
           "sendTo": "GATE_CLOSE_OUT",
           "tag": "Close"
@@ -51,8 +62,11 @@
         },
         {
           "currentState": "WakeReady",
-          "event": "BUG WINDOW: Deacon session dies after closing gate but before sending wake",
-          "newState": "Crashed"
+          "event": "BUG WINDOW: external Kill received after closing gate but before sending wake",
+          "newState": "Crashed",
+          "isReceive": true,
+          "receiveFrom": "KILL_IN",
+          "tag": "Kill"
         },
         {"currentState": "Done", "event": "terminal", "newState": "Done"},
         {"currentState": "Crashed", "event": "terminal: session dead, no further protocol progress", "newState": "Crashed"}

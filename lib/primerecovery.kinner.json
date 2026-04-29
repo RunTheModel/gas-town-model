@@ -1,14 +1,14 @@
 {
   "name": "PrimeRecovery",
-  "version": "0.1.0",
-  "description": "Library component. Models the proposed gastown #3587 fix: `gt prime` checks parked work on agent startup and self-heals when the gate has already closed. Observes Polecat (looking for Parked) and Gate (looking for Closed); when both conditions hold, fires Wake to the polecat. Single-shot.\n\nReal gastown intent: insert a `checkParkedWork(ctx RoleContext)` call in `runPrime()` (internal/cmd/prime.go) that mirrors `checkSlungWork`. When any agent starts and has parked work whose gate has been resolved, it auto-resumes regardless of whether the wake mail was successfully delivered.\n\nThis component is composed only into the FIX spec (gate-3587-fix.kinner.json). The BUG spec (gate-3587-bug.kinner.json) omits it -- when Deacon crashes mid-protocol there's nothing to self-heal and Polecat stays Parked.",
+  "version": "0.2.0",
+  "description": "Library component. Models the proposed gastown #3587 fix: `gt prime` reads parked-<agent>.json on agent startup and self-heals when the gate has already closed. Observes ParkedFile (looking for Persisted, i.e. parked-<agent>.json exists) and Gate (looking for Closed, i.e. dependency was already resolved); when both conditions hold, fires Wake to the polecat. Single-shot.\n\nv0.2 (defense-doc P1.3): observes ParkedFile (the modeled persistence layer) instead of Polecat directly. This matches the proposed real-world implementation: the new `checkParkedWork(ctx RoleContext)` function reads `parked-<agent>.json` from disk, then queries `bd gate show <gate-id> --json`. If both conditions hold, prime issues a resume directive directly. The model now demonstrates that the fix's correctness depends on the parked file being persisted, not on in-memory state visibility.\n\nReal gastown intent: insert `checkParkedWork(ctx RoleContext)` in `runPrime()` (internal/cmd/prime.go) that mirrors `checkSlungWork`. When any agent starts and the disk file says it has parked work whose gate has been resolved, it auto-resumes regardless of whether the wake mail was successfully delivered.\n\nThis component is composed only into the FIX spec (gate-3587-fix.kinner.json). The BUG spec (gate-3587-bug.kinner.json) omits it -- when Deacon crashes mid-protocol there's nothing to self-heal and Polecat stays Parked even though ParkedFile.Persisted is on disk.",
 
   "ports": {
-    "POLECAT_OBSERVE": {
+    "PARKED_OBSERVE": {
       "direction": "observe",
-      "variable": "polecatState",
-      "states": ["Parked"],
-      "description": "observe the polecat's lifecycle state to detect it's parked."
+      "variable": "parkedFileState",
+      "states": ["Persisted"],
+      "description": "observe ParkedFile to detect parked work was persisted to disk."
     },
     "GATE_OBSERVE": {
       "direction": "observe",
@@ -25,15 +25,15 @@
   "actors": [
     {
       "name": "PrimeRecovery",
-      "owner": "Single-shot self-heal sender. Fires Wake once when (Polecat=Parked AND Gate=Closed).",
+      "owner": "Single-shot self-heal sender. Fires Wake once when (ParkedFile=Persisted AND Gate=Closed).",
       "initialState": "Pending",
       "states": ["Pending", "Sent"],
       "triples": [
         {
           "currentState": "Pending",
-          "event": "self-heal: parked polecat + closed gate detected; send wake",
+          "event": "self-heal: parked file on disk + closed gate detected; send wake",
           "newState": "Sent",
-          "guard": "polecatState = POLECAT_OBSERVE_Parked /\\ gateState = GATE_OBSERVE_Closed",
+          "guard": "parkedFileState = PARKED_OBSERVE_Persisted /\\ gateState = GATE_OBSERVE_Closed",
           "isSend": true,
           "sendTo": "WAKE_OUT",
           "tag": "Wake"

@@ -1,0 +1,34 @@
+{
+  "name": "Reaper",
+  "version": "0.1.0",
+  "description": "Library component. Models an external cause-of-death for a session: nondeterministically sends a Kill message at any point in the trace. Used to make crash semantics in process models more honest -- the modeled actor's death is caused by an external event (SIGTERM, OOM, parent process death, tmux pane close), not an actor-internal state transition.\n\nThis component fires Kill exactly once. Receivers handle Kill via a guarded receive triple (typically transitioning to a Crashed terminal state). TLC's exploration of when Reaper fires relative to the receiver's protocol progression is what surfaces crash-window bugs.\n\nUsed by gate-3587 specs to model 'Deacon session dies' as Reaper -> Deacon.KILL_IN, instead of Deacon making an internal nondeterministic decision to crash. See gate-3587-defense.md P1.1.",
+
+  "ports": {
+    "KILL_OUT": {
+      "direction": "out",
+      "description": "fires the Kill event at the bound receiver. Tagged 'Kill'. The receiver is responsible for consuming Kill in whatever state(s) crash semantics apply."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Reaper",
+      "owner": "External cause-of-death sender. Pending -> Sent on send.",
+      "initialState": "Pending",
+      "states": ["Pending", "Sent"],
+      "triples": [
+        {
+          "currentState": "Pending",
+          "event": "external death event (SIGTERM, OOM, tmux pane close)",
+          "newState": "Sent",
+          "isSend": true,
+          "sendTo": "KILL_OUT",
+          "tag": "Kill"
+        },
+        {"currentState": "Sent", "event": "terminal", "newState": "Sent"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

@@ -13,10 +13,10 @@ class Deacon(Component):
 
     initial_state = 'Idle'
     state_constants = ('Idle', 'ClosingGate', 'WakeReady', 'Done', 'Crashed',)
-    _in_ports = ()
+    _in_ports = ('KILL_IN',)
     _out_ports = ('GATE_CLOSE_OUT', 'WAKE_OUT',)
-    _observe_ports = ('GATE_OBSERVE',)
-    _message_set = frozenset({'Close', 'Wake'})
+    _observe_ports = ('GATE_OBSERVE', 'POLECAT_OBSERVE',)
+    _message_set = frozenset({'Close', 'Kill', 'Wake'})
 
     def _build_transitions(self) -> list[Transition]:
         return _TRIPLES
@@ -24,12 +24,13 @@ class Deacon(Component):
 
 _TRIPLES = [
     Transition(
-        name='Deacon_BdGateCheckDeterminedDepResolvedCloseTheGate',
+        name='Deacon_BdGateCheckFindsPolecatParkedOnAnOpenGateCloseIt',
         from_state='Idle',
         to_state='ClosingGate',
         kind='send',
         send_port='GATE_CLOSE_OUT',
         send_tag='Close',
+        guard_fn=lambda self: (self._observed["POLECAT_OBSERVE"].state == 'Parked' and self._observed["GATE_OBSERVE"].state == 'Open'),
     ),
     Transition(
         name='Deacon_GateCloseLandedReadyToSendWake',
@@ -47,10 +48,12 @@ _TRIPLES = [
         send_tag='Wake',
     ),
     Transition(
-        name='Deacon_BUGWINDOWDeaconSessionDiesAfterClosingGateButBeforeSendingWake',
+        name='Deacon_BUGWINDOWExternalKillReceivedAfterClosingGateButBeforeSendingWake',
         from_state='WakeReady',
         to_state='Crashed',
-        kind='local',
+        kind='receive',
+        recv_port='KILL_IN',
+        recv_tag='Kill',
     ),
     Transition(
         name='Deacon_Terminal',

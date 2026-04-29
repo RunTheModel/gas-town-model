@@ -195,6 +195,90 @@ is uniquely caused by the WakeReady -> Crashed window. ~30 minutes.
 
 Total to be defensible against gastown-insider scrutiny: ~5-6 hours.
 
+## Status 2026-04-28 -- ALL P1 + P2 + P3 SHIPPED
+
+Disposition:
+
+  - **P1.1 (Reaper)**: SHIPPED. New `lib/reaper.kinner.json`. Deacon's
+    crash is now a `WakeReady + receive Kill -> Crashed` transition,
+    not an actor-internal nondeterministic choice. Bug spec state space
+    grew slightly (30 vs 19) but the bug shape is preserved.
+  - **P1.2 (model parking event)**: SHIPPED. New `lib/workloop.kinner.json`
+    observes Gate; sends Park to Polecat when Gate=Open. Replaces the
+    earlier Parker stub. Discovered a WF-trap interleaving (Deacon
+    racing ahead of WorkLoop) that we fixed by gating Deacon's
+    Idle->ClosingGate on observing Polecat=Parked -- mirrors real-world
+    causality where the polecat parks long before scheduled
+    `bd gate check` runs.
+  - **P1.3 (ParkedFile persistence)**: SHIPPED. New
+    `lib/parkedfile.kinner.json`. Polecat's parking transition is now
+    a multi-effect triple that atomically writes to ParkedFile.
+    PrimeRecovery now observes `parkedFileState=Persisted` instead of
+    `polecatState=Parked` -- matching the proposed real-world
+    implementation that reads `parked-<agent>.json` from disk.
+  - **P2.4 (multi-polecat / multi-gate)**: SHIPPED. New
+    `gate-3587-multi-bug.kinner.json` and `gate-3587-multi-fix.kinner.json`.
+    Two Polecat/Gate/Deacon triples running independently. Bug
+    compounds linearly (asymmetric crash outcomes are reachable). Fix
+    scales -- per-pair PrimeRecovery handles each independently. State
+    space: 900 / 3721 distinct states.
+  - **P2.5 (SuccessorDeacon)**: SHIPPED. New `gate-3587-successor-bug`
+    and `gate-3587-successor-fix` specs. Two Deacons targeting the
+    same Polecat/Gate. Demonstrates that a successor session's
+    `bd gate check` finds the gate already Closed (via Idle->ClosingGate's
+    `gateState=Open` guard) and can't help -- the closed-gate filter
+    cited in the issue body as the load-bearing root cause.
+  - **P2.6 (safety invariant)**: NOT APPLICABLE. Gate-3587's bug shape
+    is fundamentally a liveness violation (system reaches a state from
+    which it never recovers). The "bug-state" combination (Polecat=Parked,
+    Gate=Closed, Deacon=Crashed, no Wake) is briefly reachable in the
+    fix too -- transient before PrimeRecovery fires. A state-predicate
+    invariant ("this combination never holds") would fail in BOTH bug
+    and fix; only a temporal property distinguishes them. Sling-3768's
+    HookedSingleton was a true safety invariant because that bug shape
+    was a state predicate by nature; gate-3587's isn't. Lesson: the
+    bug shape determines which property type fits; don't force a
+    square peg into a round hole.
+  - **P3 (disclosure)**: SHIPPED. Limitations section added to both
+    bug and fix project descriptions covering: multi-shot prime not
+    modeled, Issue is decorative, crash window position, P2.6 finding.
+
+Final TLC results:
+
+| Spec | Distinct states | Result |
+|---|---|---|
+| Gate3587Bug | 30 | Liveness violates (bug demonstrated) |
+| Gate3587Fix | 61 | Model checking completed (fix verified) |
+| Gate3587MultiBug | 900 | Liveness violates |
+| Gate3587MultiFix | 3,721 | Model checking completed |
+| Gate3587SuccessorBug | 814 | Liveness violates |
+| Gate3587SuccessorFix | 1,627 | Model checking completed |
+
+Final Python (200 seeds, single-pair specs):
+
+| Spec | Stuck Parked | Deacon crashed but Polecat resumed | Deacon completed normally |
+|---|---|---|---|
+| Bug | 90 (45%) | 0 | 110 |
+| Fix | **0 (0%)** | 103 | 97 |
+
+The 103 fix-spec runs where Deacon crashed but Polecat resumed are
+exactly the cases where the bug WOULD have manifested -- PrimeRecovery's
+self-heal kicked in.
+
+Modeling lessons captured during this work:
+
+  - **Bounded models can fall into WF traps**: the WorkLoop+Deacon race
+    surfaced the same issue as sling-3768's Patrol -- an action with
+    oscillating-enable can be missed under WF on a bounded substrate.
+    The fix in this case was a real-world-faithful gating
+    (Deacon waits for Polecat=Parked) rather than a model-only
+    workaround. Different from sling-3768's Patrol simplification,
+    where dropping the agent observation was a model-only fidelity loss.
+  - **Property type matches bug shape**: not every bug fits cleanly
+    into safety; this one is liveness-shaped. P2.6's investigation
+    documented why, rather than forcing a safety property to match
+    sling-3768's structure.
+
 ## Interim posture (do this even before P1)
 
 Before any of the above, append a "Limitations" section to each project

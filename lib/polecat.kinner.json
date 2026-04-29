@@ -1,6 +1,6 @@
 {
   "name": "Polecat",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Library component. The single Polecat archetype: a Claude Code session running with the polecat role. Models BOTH the work-coordination lifecycle (Absent -> Working -> Done -> Idle) AND the substrate-layer hook-receive boundary (HOOK_IN port).\n\nv0.3 (#3587 support): adds Parked state plus PARK_IN / WAKE_IN ports for the parked-on-gate lifecycle. A Polecat parked on a gate waits in Parked until WAKE_IN delivers a Wake message. Projects that don't model parking (e.g., Lane in convoy-lands) bind PARK_IN and WAKE_IN to NeverFires stubs; the new transitions remain unreachable.\n\nDifferent applications bind different subsets of ports:\n  - convoy-lands: MERGE_READY/ISSUE_OBSERVE/SLING/HOOK_IN active; PARK_IN/WAKE_IN stubbed.\n  - gate-3587: PARK_IN/WAKE_IN active; SLING/MERGE_READY stubbed (or unused via observe semantics).\nBoth paths to Working exist as before (sling-receive AND observe-driven).",
 
   "ports": {
@@ -29,6 +29,10 @@
     "WAKE_IN": {
       "direction": "in",
       "description": "receives a Wake signal from Deacon (gt gate wake) or PrimeRecovery (the proposed self-heal fix). Tagged 'Wake'. Transitions Parked -> Working."
+    },
+    "WRITE_OUT": {
+      "direction": "out",
+      "description": "sends Write to ParkedFile when transitioning into Parked. Tagged 'Write'. v0.4: persists the parked record on disk (real source: `gt park` writes parked-<agent>.json). Composite hosts that don't model parking (e.g., Lane) bind this to a ParkedFile-shaped sink that simply never receives because the parking transition never fires there."
     }
   },
 
@@ -47,7 +51,7 @@
         {"currentState": "Working",      "event": "polecat receives PreCompact lifecycle event (substrate-layer)",             "newState": "HandlingHook", "isReceive": true, "receiveFrom": "HOOK_IN", "tag": "PreCompact"},
         {"currentState": "HandlingHook", "event": "hook handler completes; headless polecat returns to working",              "newState": "Working"},
 
-        {"currentState": "Absent",       "event": "polecat parks on a gate (gate-3587 path)",                                 "newState": "Parked",       "isReceive": true, "receiveFrom": "PARK_IN", "tag": "Park"},
+        {"currentState": "Absent",       "event": "polecat parks on a gate (gate-3587 path); persists parked-state to disk", "newState": "Parked",       "isReceive": true, "receiveFrom": "PARK_IN", "tag": "Park", "isSend": true, "sendTo": "WRITE_OUT", "sendTag": "Write"},
         {"currentState": "Parked",       "event": "polecat receives wake (gt gate wake or prime self-heal)",                  "newState": "Working",      "isReceive": true, "receiveFrom": "WAKE_IN", "tag": "Wake"}
       ]
     }

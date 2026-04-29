@@ -1,0 +1,41 @@
+{
+  "name": "WorkLoop",
+  "version": "0.1.0",
+  "description": "Library component. Models the polecat's work loop encountering a gate-blocking step. When this loop observes a gate in Open state, it fires a Park signal to the polecat. Single-shot.\n\nReal gastown analog: the polecat process running its agent prompt loop hits a `bd gate wait <id>` (or equivalent) call. The work step's effect is to halt forward progress and emit a Park signal. From the substrate's perspective, the polecat is now Parked and waiting for the gate's external dependency to resolve.\n\nUsed by gate-3587 specs to make the parking event modeled-by-cause rather than baked-in. Replaces the earlier `Parker` stub which fired Park unconditionally at t=0; with WorkLoop, the Park message is conditional on observing Gate=Open, demonstrating that parking is a *consequence* of the gate state, not an initial assumption. See gate-3587-defense.md P1.2.",
+
+  "ports": {
+    "GATE_OBSERVE": {
+      "direction": "observe",
+      "variable": "gateState",
+      "states": ["Open", "Closed"],
+      "description": "observe the gate that the work loop encounters."
+    },
+    "PARK_OUT": {
+      "direction": "out",
+      "description": "fires the Park signal at the bound polecat. Tagged 'Park'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "WorkLoop",
+      "owner": "Polecat work-loop step that hits a gate. Pending -> Sent on observation that gate is Open.",
+      "initialState": "Pending",
+      "states": ["Pending", "Sent"],
+      "triples": [
+        {
+          "currentState": "Pending",
+          "event": "work step encounters open gate; emit Park signal to polecat",
+          "newState": "Sent",
+          "guard": "gateState = GATE_OBSERVE_Open",
+          "isSend": true,
+          "sendTo": "PARK_OUT",
+          "tag": "Park"
+        },
+        {"currentState": "Sent", "event": "terminal", "newState": "Sent"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

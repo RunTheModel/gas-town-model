@@ -1,7 +1,7 @@
 {
   "name": "Gate3587Bug",
-  "messageSet": ["Park", "Wake", "Close", "Sling", "MergeReady", "PreCompact"],
-  "description": "Issue #3587 demo. Demonstrates the parked-work-never-recovers bug: if the Deacon session dies after `bd gate check` closes a gate but before `gt gate wake <id>` runs, parked polecats never receive wake notification and wait indefinitely.\n\nTopology:\n  - Pol (Polecat): receives Park from Parker, transitions Absent -> Parked. Receives Wake on WAKE_IN to transition Parked -> Working. SLING/HOOK_IN bound to NeverFires stubs (no slings or compaction in this demo).\n  - Iss (Issue): bound for Polecat's ISSUE_OBSERVE; stays Open throughout (no SLING).\n  - Pkr (Parker): autonomous; fires Park once at t=0.\n  - Gt (Gate): starts Open; transitions to Closed when Deacon sends Close.\n  - Dec (Deacon): runs the two-step protocol -- close gate, then send wake. Has an explicit crash transition WakeReady -> Crashed that models 'Deacon session dies after bd gate check closes the gate but before gt gate wake runs'.\n\nThe critical bug interleaving: Deacon transitions Idle -> ClosingGate (sends Close) -> WakeReady (observes Gate=Closed) -> Crashed. Gate is Closed, no Wake in flight, Polecat stays Parked. The PolecatEventuallyWorking liveness property fails because TLC finds the crash branch.\n\nNo fix in this spec; the companion gate-3587-fix.kinner.json adds PrimeRecovery for the proposed self-heal.\n\nReal sources: cmd/bd/gate.go:818 closeGate(), internal/cmd/gate.go:84 gt gate wake, internal/cmd/prime.go (where the proposed checkParkedWork() would land).",
+  "messageSet": ["Park", "Wake", "Close", "Kill", "Write", "Sling", "MergeReady", "PreCompact"],
+  "description": "Issue #3587 demo. Demonstrates the parked-work-never-recovers bug: if the Deacon session dies after `bd gate check` closes a gate but before `gt gate wake <id>` runs, parked polecats never receive wake notification and wait indefinitely.\n\nTopology (post P1+P2 hardening):\n  - Pol (Polecat): receives Park (from WorkLoop), transitions Absent -> Parked AND atomically writes to ParkedFile. Receives Wake on WAKE_IN to transition Parked -> Working.\n  - Iss (Issue): bound for Polecat's ISSUE_OBSERVE; stays Open throughout (no SLING).\n  - Pf (ParkedFile): persists the parked-state on Polecat's transition. Models parked-<agent>.json on disk.\n  - Wl (WorkLoop): observes Gate; when Gate=Open, fires Park to Polecat. Models the polecat work loop encountering a gate-blocking step.\n  - Gt (Gate): starts Open; transitions to Closed when Deacon sends Close.\n  - Dec (Deacon): runs the two-step protocol -- close gate, then send wake. Idle -> ClosingGate guarded on (Polecat=Parked AND Gate=Open).\n  - Rpr (Reaper): nondeterministically sends Kill to Deacon. Models external session death (SIGTERM, OOM, pane close).\n\nCritical bug interleaving: Deacon transitions Idle -> ClosingGate -> WakeReady (observes Gate=Closed). Reaper sends Kill before Deacon sends Wake. Deacon transitions WakeReady -> Crashed. Gate is Closed, no Wake in flight, Polecat stays Parked. PolecatEventuallyWorking liveness property fails.\n\nLIMITATIONS (what the model does and does not capture):\n  - Multi-shot prime not modeled: real `gt prime` fires every agent startup; the modeled PrimeRecovery (in fix spec) is single-shot. Conservative under-approximation -- the fix is at least as effective as modeled.\n  - Issue is decorative: bound to satisfy Polecat.ISSUE_OBSERVE; stays Open. Not exercised.\n  - Crash window position: Deacon only consumes Kill at WakeReady. Kill arriving in other Deacon states sits in flight; no crash happens. The bug-window is the WakeReady state specifically per the issue body, so this is a focused model rather than a comprehensive crash study.\n  - Bug shape is liveness, not safety: a state-predicate 'no stuck combination' invariant cannot distinguish bug from fix because the combination is briefly reachable in both (transient before PrimeRecovery fires in the fix). Liveness is the natural property here.\n\nReal sources: cmd/bd/gate.go:818 closeGate(), internal/cmd/gate.go:84 gt gate wake, internal/cmd/prime.go (where the proposed checkParkedWork() would land).\n\nCompanion specs:\n  - gate-3587-fix.kinner.json -- adds PrimeRecovery for the proposed self-heal\n  - gate-3587-multi-bug.kinner.json / multi-fix -- 2 polecat/gate pairs, verifies bug compounds linearly and fix scales\n  - gate-3587-successor-bug.kinner.json / successor-fix -- 2 Deacons, verifies that a successor session can't recover (closed gate is invisible per `bd gate check`'s status=open filter)",
 
   "actors": [],
 
@@ -11,8 +11,14 @@
        "SLING":         "StubSling.OUT",
        "HOOK_IN":       "StubHook.OUT",
        "ISSUE_OBSERVE": "Iss",
-       "PARK_IN":       "Pkr.PARK_OUT",
-       "WAKE_IN":       "Dec.WAKE_OUT"
+       "PARK_IN":       "Wl.PARK_OUT",
+       "WAKE_IN":       "Dec.WAKE_OUT",
+       "WRITE_OUT":     "Pf.WRITE_IN"
+     }},
+
+    {"use": "ParkedFile", "as": "Pf", "fairness": "weak",
+     "bind": {
+       "WRITE_IN": "Pol.WRITE_OUT"
      }},
 
     {"use": "Issue", "as": "Iss", "fairness": "weak",
@@ -21,9 +27,10 @@
        "POLECAT_OBSERVE": "Pol"
      }},
 
-    {"use": "Parker", "as": "Pkr", "fairness": "weak",
+    {"use": "WorkLoop", "as": "Wl", "fairness": "weak",
      "bind": {
-       "PARK_OUT": "Pol.PARK_IN"
+       "GATE_OBSERVE": "Gt",
+       "PARK_OUT":     "Pol.PARK_IN"
      }},
 
     {"use": "Gate", "as": "Gt", "fairness": "weak",
@@ -33,9 +40,16 @@
 
     {"use": "Deacon", "as": "Dec", "fairness": "weak",
      "bind": {
-       "GATE_CLOSE_OUT": "Gt.CLOSE_IN",
-       "GATE_OBSERVE":   "Gt",
-       "WAKE_OUT":       "Pol.WAKE_IN"
+       "GATE_CLOSE_OUT":  "Gt.CLOSE_IN",
+       "GATE_OBSERVE":    "Gt",
+       "POLECAT_OBSERVE": "Pol",
+       "WAKE_OUT":        "Pol.WAKE_IN",
+       "KILL_IN":         "Rpr.KILL_OUT"
+     }},
+
+    {"use": "Reaper", "as": "Rpr", "fairness": "weak",
+     "bind": {
+       "KILL_OUT": "Dec.KILL_IN"
      }},
 
     {"use": "NeverFires", "as": "StubSling", "fairness": "weak",

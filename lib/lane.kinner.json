@@ -41,12 +41,15 @@
        "MERGE_READY":   "MERGE_READY_OUT",
        "ISSUE_OBSERVE": "Iss",
        "PARK_IN":       "ParkStub.OUT",
-       "WAKE_IN":       "WakeStub.OUT"
+       "WAKE_IN":       "WakeStub.OUT",
+       "WRITE_OUT":     "ParkedFileStub.WRITE_IN"
      }},
 
     {"use": "NeverFires", "as": "ParkStub",
      "bind": {}},
     {"use": "NeverFires", "as": "WakeStub",
+     "bind": {}},
+    {"use": "ParkedFile", "as": "ParkedFileStub",
      "bind": {}},
 
     {"use": "Issue", "as": "Iss",
