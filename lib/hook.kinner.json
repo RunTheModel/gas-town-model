@@ -1,47 +1,34 @@
 {
   "name": "Hook",
-  "version": "0.2.0",
-  "description": "Library component. Models a Claude Code session lifecycle hook -- one of the events that fires at an agent's session at well-defined moments (PreCompact, UserPromptSubmit, ToolUse, SessionStart). This first cut models PreCompact specifically, since that is the hook PR 745 (gastownhall/gascity#744) found a bug in.\n\nv0.2 (defense-doc P2.4): Hook now loops up to maxCycles times, gated on observing the Agent at Active between fires. Each fire increments cycleCount via a 134/148-shape typed variable. The composing application sets maxCycles per-instance via the options override.\n\nThe coupling between Hook and other actors is intentionally loose: Hook fires whenever Agent is Active and the counter is below max. It does NOT synchronize with Patrol or any per-cycle scheduler. In real gas-town, Hook fires based on context-window pressure (a runtime/time signal), independent of patrol or substrate state. The model preserves that loose coupling so TLC explores realistic interleavings -- some traces have all patrols firing in cycle 1, some spread them across cycles, some have patrols missing their window.",
+  "version": "0.1.0",
+  "description": "Library component. Models a Claude Code session lifecycle hook -- one of the events that fires at an agent's session at well-defined moments (PreCompact, UserPromptSubmit, ToolUse, SessionStart). This first cut models PreCompact specifically, since that is the hook PR 745 (gastownhall/gascity#744) found a bug in. The composing application binds the AGENT port to whichever agent receives the event (Polecat, Mayor, Witness, etc.). gastown-guide does not model hooks at all -- they are substrate-layer events that no spec there describes.\n\nSingle-fire variant. For multi-cycle substrate models, use `HookCycler` (lib/hookcycler.kinner.json) instead.",
 
   "ports": {
     "AGENT": {
       "direction": "out",
-      "description": "fires the hook event at the bound agent (the Claude session targeted by this hook). Tagged 'PreCompact' so the bound receiver can pattern-match on this specific lifecycle event."
-    },
-    "AGENT_OBSERVE": {
-      "direction": "observe",
-      "variable": "agentState",
-      "states": ["Active"],
-      "description": "observes the bound agent's state. Hook only fires PreCompact when agent is Active (the only state where the Active->Compacting receive triple is enabled)."
+      "description": "fires the hook event at the bound agent (the Claude session targeted by this hook). Tagged with 'PreCompact' so the bound receiver can pattern-match on this specific lifecycle event."
     }
   },
 
   "actors": [
     {
       "name": "Hook",
-      "owner": "Lifecycle event firer that fires PreCompact up to maxCycles times. Single Idle state with a self-loop guarded by cycleCount < maxCycles. cycleCount is a 134-shape typed variable bound to [0, maxCycles]; assign increments it on each fire.",
+      "owner": "Lifecycle event firer. Real implementation: internal/hooks/config.go (type Hook). Each Hook instance fires once when its lifecycle moment is reached; the bound agent receives the event via the AGENT port and is responsible for handling. Generalization to multiple hook types and multi-fire (a single hook firing many times across an agent's lifetime) is in HookCycler.",
       "initialState": "Idle",
-      "options": {
-        "maxCycles": {"type": "integer", "default": 2}
-      },
-      "variables": {
-        "cycleCount": {
-          "type": "integer",
-          "bound": [0, "maxCycles"],
-          "default": 0
-        }
-      },
-      "states": ["Idle"],
+      "states": ["Idle", "Fired"],
       "triples": [
         {
           "currentState": "Idle",
-          "event": "lifecycle moment reached: PreCompact fires (loop entry)",
-          "newState": "Idle",
+          "event": "lifecycle moment reached: PreCompact fires",
+          "newState": "Fired",
           "isSend": true,
           "sendTo": "AGENT",
-          "tag": "PreCompact",
-          "guard": "cycleCount < maxCycles && agentState == AGENT_OBSERVE_Active",
-          "assign": {"cycleCount": "cycleCount + 1"}
+          "tag": "PreCompact"
+        },
+        {
+          "currentState": "Fired",
+          "event": "terminal: hook fires exactly once per lifecycle moment",
+          "newState": "Fired"
         }
       ]
     }

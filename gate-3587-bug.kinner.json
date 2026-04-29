@@ -1,0 +1,59 @@
+{
+  "name": "Gate3587Bug",
+  "messageSet": ["Park", "Wake", "Close", "Sling", "MergeReady", "PreCompact"],
+  "description": "Issue #3587 demo. Demonstrates the parked-work-never-recovers bug: if the Deacon session dies after `bd gate check` closes a gate but before `gt gate wake <id>` runs, parked polecats never receive wake notification and wait indefinitely.\n\nTopology:\n  - Pol (Polecat): receives Park from Parker, transitions Absent -> Parked. Receives Wake on WAKE_IN to transition Parked -> Working. SLING/HOOK_IN bound to NeverFires stubs (no slings or compaction in this demo).\n  - Iss (Issue): bound for Polecat's ISSUE_OBSERVE; stays Open throughout (no SLING).\n  - Pkr (Parker): autonomous; fires Park once at t=0.\n  - Gt (Gate): starts Open; transitions to Closed when Deacon sends Close.\n  - Dec (Deacon): runs the two-step protocol -- close gate, then send wake. Has an explicit crash transition WakeReady -> Crashed that models 'Deacon session dies after bd gate check closes the gate but before gt gate wake runs'.\n\nThe critical bug interleaving: Deacon transitions Idle -> ClosingGate (sends Close) -> WakeReady (observes Gate=Closed) -> Crashed. Gate is Closed, no Wake in flight, Polecat stays Parked. The PolecatEventuallyWorking liveness property fails because TLC finds the crash branch.\n\nNo fix in this spec; the companion gate-3587-fix.kinner.json adds PrimeRecovery for the proposed self-heal.\n\nReal sources: cmd/bd/gate.go:818 closeGate(), internal/cmd/gate.go:84 gt gate wake, internal/cmd/prime.go (where the proposed checkParkedWork() would land).",
+
+  "actors": [],
+
+  "components": [
+    {"use": "Polecat", "as": "Pol", "fairness": "weak",
+     "bind": {
+       "SLING":         "StubSling.OUT",
+       "HOOK_IN":       "StubHook.OUT",
+       "ISSUE_OBSERVE": "Iss",
+       "PARK_IN":       "Pkr.PARK_OUT",
+       "WAKE_IN":       "Dec.WAKE_OUT"
+     }},
+
+    {"use": "Issue", "as": "Iss", "fairness": "weak",
+     "bind": {
+       "SLING":           "StubIss.OUT",
+       "POLECAT_OBSERVE": "Pol"
+     }},
+
+    {"use": "Parker", "as": "Pkr", "fairness": "weak",
+     "bind": {
+       "PARK_OUT": "Pol.PARK_IN"
+     }},
+
+    {"use": "Gate", "as": "Gt", "fairness": "weak",
+     "bind": {
+       "CLOSE_IN": "Dec.GATE_CLOSE_OUT"
+     }},
+
+    {"use": "Deacon", "as": "Dec", "fairness": "weak",
+     "bind": {
+       "GATE_CLOSE_OUT": "Gt.CLOSE_IN",
+       "GATE_OBSERVE":   "Gt",
+       "WAKE_OUT":       "Pol.WAKE_IN"
+     }},
+
+    {"use": "NeverFires", "as": "StubSling", "fairness": "weak",
+     "bind": {}},
+    {"use": "NeverFires", "as": "StubHook", "fairness": "weak",
+     "bind": {}},
+    {"use": "NeverFires", "as": "StubIss", "fairness": "weak",
+     "bind": {}}
+  ],
+
+  "invariants": [],
+
+  "properties": [
+    {
+      "id": "PolecatEventuallyWorking",
+      "description": "Liveness: under fairness, the parked polecat eventually reaches Working. Fails in this bug spec because Deacon's WakeReady -> Crashed branch leaves Polecat without a wake.",
+      "expression": "<>(Pol.polecatState = Pol.Working)",
+      "severity": "high"
+    }
+  ]
+}

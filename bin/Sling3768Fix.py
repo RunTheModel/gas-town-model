@@ -16,7 +16,7 @@ from Agent import Agent
 from AssigneeLock2 import AssigneeLock2
 from BeadCloseable import BeadCloseable
 from HandoffCycle import HandoffCycle
-from Hook import Hook
+from HookCycler import HookCycler
 from Mailbox import Mailbox
 from Pane import Pane
 from Patrol import Patrol
@@ -39,7 +39,7 @@ class Sling3768Fix(Application):
 
     def __init__(self, seed: int = 0) -> None:
         super().__init__(seed=seed)
-        self.hk = Hook(MaxCycles=2)
+        self.hk = HookCycler(MaxCycles=2)
         self._register('Hk', self.hk)
         self.ag = Agent()
         self._register('Ag', self.ag)

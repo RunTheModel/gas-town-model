@@ -6,7 +6,7 @@
   "actors": [],
 
   "components": [
-    {"use": "Hook", "as": "Hk", "fairness": "weak",
+    {"use": "HookCycler", "as": "Hk", "fairness": "weak",
      "options": {"maxCycles": 3},
      "bind": {
        "AGENT":         "Ag.HOOK_FIRES",

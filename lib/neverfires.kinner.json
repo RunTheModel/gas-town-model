@@ -1,0 +1,23 @@
+{
+  "name": "NeverFires",
+  "version": "0.2.0",
+  "description": "Stub component. Declares an OUT port whose channel is never written. Used to satisfy Kinner's 'every in-port must be bound' requirement (E009) when modeling 'this in-port has no upstream sender' -- e.g., Polecat's PARK_IN/WAKE_IN ports in projects that don't exercise the parking lifecycle.\n\nThe channel from NeverFires.OUT to its bound receiver stays in NotSent forever; the receiver's tag-matching triple is never enabled. See backlog/151-no-sender-binding-sugar.md for the language-level alternative (deliberate `null` binding).",
+
+  "ports": {
+    "OUT": {"direction": "out", "description": "stubbed out-port; channel is never written"}
+  },
+
+  "actors": [
+    {
+      "name": "NeverFires",
+      "owner": "Single state, no transitions out. The OUT channel sits in NotSent forever.",
+      "initialState": "Quiet",
+      "states": ["Quiet"],
+      "triples": [
+        {"currentState": "Quiet", "event": "terminal", "newState": "Quiet"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

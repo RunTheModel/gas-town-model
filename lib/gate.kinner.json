@@ -1,0 +1,34 @@
+{
+  "name": "Gate",
+  "version": "0.1.0",
+  "description": "Library component. Models a gate as in `bd gate` -- a piece of state that's `open` while the gate's external dependency is unresolved, and transitions to `closed` once Deacon confirms the dependency is satisfied.\n\nReal gastown: `internal/cmd/gate.go`, `cmd/bd/gate.go:818 closeGate()`. The Gate actor here is the persistent state row; the transition Open -> Closed corresponds to `closeGate()` writing status=closed.\n\nThe parked Polecat conceptually waits for this transition. Without the proposed prime-side self-heal in #3587, Polecat needs Deacon to send a wake message between gate-close and any session-death window; the model demonstrates that race.",
+
+  "ports": {
+    "CLOSE_IN": {
+      "direction": "in",
+      "description": "receives a Close message from Deacon when bd gate check determines the dependency is resolved. Tagged 'Close'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Gate",
+      "owner": "Single piece of state representing one gate. Open while waiting for the upstream dependency to resolve; transitions to Closed when Deacon's bd gate check confirms resolution.",
+      "initialState": "Open",
+      "states": ["Open", "Closed"],
+      "triples": [
+        {
+          "currentState": "Open",
+          "event": "Deacon's bd gate check closes this gate (dependency resolved)",
+          "newState": "Closed",
+          "isReceive": true,
+          "receiveFrom": "CLOSE_IN",
+          "tag": "Close"
+        },
+        {"currentState": "Closed", "event": "terminal", "newState": "Closed"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

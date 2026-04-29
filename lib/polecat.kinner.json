@@ -1,7 +1,7 @@
 {
   "name": "Polecat",
-  "version": "0.2.1",
-  "description": "Library component. The single Polecat archetype: a Claude Code session running with the polecat role. Models BOTH the work-coordination lifecycle (Absent -> Working -> Done -> Idle) AND the substrate-layer hook-receive boundary (HOOK_IN port). Different applications bind different subsets of ports: convoy-lands bindings exercise MERGE_READY/ISSUE_OBSERVE; polecat-receives-hook bindings exercise HOOK_IN. Both paths to Working exist (option C): SLING-receive AND observe-driven.",
+  "version": "0.3.0",
+  "description": "Library component. The single Polecat archetype: a Claude Code session running with the polecat role. Models BOTH the work-coordination lifecycle (Absent -> Working -> Done -> Idle) AND the substrate-layer hook-receive boundary (HOOK_IN port).\n\nv0.3 (#3587 support): adds Parked state plus PARK_IN / WAKE_IN ports for the parked-on-gate lifecycle. A Polecat parked on a gate waits in Parked until WAKE_IN delivers a Wake message. Projects that don't model parking (e.g., Lane in convoy-lands) bind PARK_IN and WAKE_IN to NeverFires stubs; the new transitions remain unreachable.\n\nDifferent applications bind different subsets of ports:\n  - convoy-lands: MERGE_READY/ISSUE_OBSERVE/SLING/HOOK_IN active; PARK_IN/WAKE_IN stubbed.\n  - gate-3587: PARK_IN/WAKE_IN active; SLING/MERGE_READY stubbed (or unused via observe semantics).\nBoth paths to Working exist as before (sling-receive AND observe-driven).",
 
   "ports": {
     "SLING": {
@@ -21,15 +21,23 @@
       "variable": "issueState",
       "states": ["Open", "Hooked", "InProgress", "Closed"],
       "description": "observes the assigned Issue's state."
+    },
+    "PARK_IN": {
+      "direction": "in",
+      "description": "receives a Park signal when the polecat's work is blocked on a gate (#3587). Tagged 'Park'. Lane and other non-parking topologies bind this to NeverFires."
+    },
+    "WAKE_IN": {
+      "direction": "in",
+      "description": "receives a Wake signal from Deacon (gt gate wake) or PrimeRecovery (the proposed self-heal fix). Tagged 'Wake'. Transitions Parked -> Working."
     }
   },
 
   "actors": [
     {
       "name": "Polecat",
-      "owner": "Polecat agent. Option C: both SLING-receive and observe-driven paths to Working.",
+      "owner": "Polecat agent. v0.3 adds Parked state for the gate-blocked lifecycle.",
       "initialState": "Absent",
-      "states": ["Absent", "Working", "HandlingHook", "Done", "Idle"],
+      "states": ["Absent", "Working", "HandlingHook", "Done", "Idle", "Parked"],
       "triples": [
         {"currentState": "Absent",       "event": "polecat receives sling assignment (channel-driven path)",                  "newState": "Working",      "isReceive": true, "receiveFrom": "SLING", "tag": "Sling", "guard": "issueState = ISSUE_OBSERVE_Hooked"},
         {"currentState": "Absent",       "event": "polecat advances by observing its assigned issue is hooked (observe-driven path)", "newState": "Working", "guard": "issueState = ISSUE_OBSERVE_Hooked"},
@@ -37,7 +45,10 @@
         {"currentState": "Done",         "event": "agent state transitions to idle",                                          "newState": "Idle",         "guard": "issueState = ISSUE_OBSERVE_Closed"},
         {"currentState": "Idle",         "event": "terminal",                                                                 "newState": "Idle"},
         {"currentState": "Working",      "event": "polecat receives PreCompact lifecycle event (substrate-layer)",             "newState": "HandlingHook", "isReceive": true, "receiveFrom": "HOOK_IN", "tag": "PreCompact"},
-        {"currentState": "HandlingHook", "event": "hook handler completes; headless polecat returns to working",              "newState": "Working"}
+        {"currentState": "HandlingHook", "event": "hook handler completes; headless polecat returns to working",              "newState": "Working"},
+
+        {"currentState": "Absent",       "event": "polecat parks on a gate (gate-3587 path)",                                 "newState": "Parked",       "isReceive": true, "receiveFrom": "PARK_IN", "tag": "Park"},
+        {"currentState": "Parked",       "event": "polecat receives wake (gt gate wake or prime self-heal)",                  "newState": "Working",      "isReceive": true, "receiveFrom": "WAKE_IN", "tag": "Wake"}
       ]
     }
   ],

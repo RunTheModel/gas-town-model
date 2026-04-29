@@ -1,0 +1,34 @@
+{
+  "name": "Parker",
+  "version": "0.1.0",
+  "description": "Library component. One-shot Park sender. Fires PARK_OUT once unconditionally at t=0; ends in Sent terminal. Used by gate-3587 specs to put the modeled Polecat into Parked state at the start of the trace -- mirrors a real polecat that hit a gate-blocking step before the modeled boundary.\n\nNo upstream observation; the Parker autonomously sends Park as soon as WF picks it. Real gastown's parking logic is implicit in `gt park` plus the gate-blocked detection inside the polecat's work loop; this component is the spec-side stand-in.",
+
+  "ports": {
+    "PARK_OUT": {
+      "direction": "out",
+      "description": "fires the Park event at the bound polecat. Tagged 'Park'."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Parker",
+      "owner": "One-shot Park sender. Pending -> Sent on send.",
+      "initialState": "Pending",
+      "states": ["Pending", "Sent"],
+      "triples": [
+        {
+          "currentState": "Pending",
+          "event": "fires Park (modeling: polecat hits a gate-blocking step)",
+          "newState": "Sent",
+          "isSend": true,
+          "sendTo": "PARK_OUT",
+          "tag": "Park"
+        },
+        {"currentState": "Sent", "event": "terminal", "newState": "Sent"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

@@ -1,0 +1,64 @@
+{
+  "name": "Deacon",
+  "version": "0.1.0",
+  "description": "Library component. Models the Deacon session that runs `bd gate check` and `gt gate wake`. The two-step protocol -- close gate, then send wake -- is non-atomic; if the Deacon session dies between the two operations the wake is never sent and parked polecats wait indefinitely. See gastown #3587.\n\nFlow:\n  Idle -> ClosingGate (send Close to gate)\n  ClosingGate -> WakeReady (observe Gate=Closed, i.e. the close was processed)\n  WakeReady -> Done (send Wake to polecat)\n\nThe critical bug-window transition:\n  WakeReady -> Crashed (Deacon session dies after gate-close has landed but before wake-send fires)\n\nTLC explores both branches from WakeReady. The Crashed branch leaves the gate Closed, no wake in flight, Polecat permanently Parked -- the bug shape #3587 reports.\n\nReal sources: cmd/bd/gate.go:818 closeGate(), internal/cmd/gate.go:84 gt gate wake.",
+
+  "ports": {
+    "GATE_CLOSE_OUT": {
+      "direction": "out",
+      "description": "send Close to the gate (bd gate check determined the dependency resolved). Tagged 'Close'."
+    },
+    "GATE_OBSERVE": {
+      "direction": "observe",
+      "variable": "gateState",
+      "states": ["Open", "Closed"],
+      "description": "observe the gate's state to confirm the close landed before proceeding to send wake."
+    },
+    "WAKE_OUT": {
+      "direction": "out",
+      "description": "send Wake to the parked polecat (gt gate wake). Tagged 'Wake'. The bug arises when this send is preempted by Deacon session death."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "Deacon",
+      "owner": "Deacon session running bd gate check + gt gate wake. Non-atomic two-step protocol with explicit crash window between the two sends.",
+      "initialState": "Idle",
+      "states": ["Idle", "ClosingGate", "WakeReady", "Done", "Crashed"],
+      "triples": [
+        {
+          "currentState": "Idle",
+          "event": "bd gate check determined dep resolved; close the gate",
+          "newState": "ClosingGate",
+          "isSend": true,
+          "sendTo": "GATE_CLOSE_OUT",
+          "tag": "Close"
+        },
+        {
+          "currentState": "ClosingGate",
+          "event": "gate close landed; ready to send wake",
+          "newState": "WakeReady",
+          "guard": "gateState = GATE_OBSERVE_Closed"
+        },
+        {
+          "currentState": "WakeReady",
+          "event": "gt gate wake sends Wake to parked polecat",
+          "newState": "Done",
+          "isSend": true,
+          "sendTo": "WAKE_OUT",
+          "tag": "Wake"
+        },
+        {
+          "currentState": "WakeReady",
+          "event": "BUG WINDOW: Deacon session dies after closing gate but before sending wake",
+          "newState": "Crashed"
+        },
+        {"currentState": "Done", "event": "terminal", "newState": "Done"},
+        {"currentState": "Crashed", "event": "terminal: session dead, no further protocol progress", "newState": "Crashed"}
+      ]
+    }
+  ],
+
+  "invariants": []
+}

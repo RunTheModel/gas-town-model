@@ -1,0 +1,51 @@
+{
+  "name": "HookCycler",
+  "version": "0.1.0",
+  "description": "Library component. Multi-cycle variant of Hook -- fires PreCompact up to maxCycles times, gated on observing the Agent back at Active between fires. Used by substrate models (sling-3768) that need to simulate N consecutive context-cycle events.\n\nDistinct from `lib/hook.kinner.json`, which is the original single-fire Hook used by work-coordination composites like Lane / convoy-lands. The two components were split in 2026-04-29 after sling-3768's multi-cycle additions broke single-fire consumers (E009 on the new AGENT_OBSERVE binding plus a behavior change from unconditional fire to agent-gated fire).\n\nUse `Hook` for: any topology where the lifecycle hook fires once per modeled boundary (most cases).\nUse `HookCycler` for: substrate models that need N substrate cycles in one TLC run.\n\nThe coupling between HookCycler and other actors is intentionally loose: it fires whenever Agent is Active and the counter is below max. It does NOT synchronize with Patrol or any per-cycle scheduler. Real gas-town's PreCompact fires based on context-window pressure (a runtime/time signal), independent of patrol or substrate state. The model preserves that loose coupling so TLC explores realistic interleavings.",
+
+  "ports": {
+    "AGENT": {
+      "direction": "out",
+      "description": "fires the hook event at the bound agent. Tagged 'PreCompact'."
+    },
+    "AGENT_OBSERVE": {
+      "direction": "observe",
+      "variable": "agentState",
+      "states": ["Active"],
+      "description": "observes the bound agent's state. HookCycler only fires PreCompact when agent is Active (the only state where the Active->Compacting receive triple is enabled)."
+    }
+  },
+
+  "actors": [
+    {
+      "name": "HookCycler",
+      "owner": "Lifecycle event firer that fires PreCompact up to maxCycles times. Single Idle state with a self-loop guarded by cycleCount < maxCycles. cycleCount is a 134-shape typed variable bound to [0, maxCycles]; assign increments it on each fire.",
+      "initialState": "Idle",
+      "options": {
+        "maxCycles": {"type": "integer", "default": 2}
+      },
+      "variables": {
+        "cycleCount": {
+          "type": "integer",
+          "bound": [0, "maxCycles"],
+          "default": 0
+        }
+      },
+      "states": ["Idle"],
+      "triples": [
+        {
+          "currentState": "Idle",
+          "event": "lifecycle moment reached: PreCompact fires (loop entry)",
+          "newState": "Idle",
+          "isSend": true,
+          "sendTo": "AGENT",
+          "tag": "PreCompact",
+          "guard": "cycleCount < maxCycles && agentState == AGENT_OBSERVE_Active",
+          "assign": {"cycleCount": "cycleCount + 1"}
+        }
+      ]
+    }
+  ],
+
+  "invariants": []
+}

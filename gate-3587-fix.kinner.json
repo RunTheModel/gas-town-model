@@ -1,0 +1,66 @@
+{
+  "name": "Gate3587Fix",
+  "messageSet": ["Park", "Wake", "Close", "Sling", "MergeReady", "PreCompact"],
+  "description": "Issue #3587 PROPOSED FIX. Demonstrates that adding a `checkParkedWork` step to `gt prime` (modeled here as a PrimeRecovery component) self-heals the parked-polecat-after-deacon-crash bug. Pairs with gate-3587-bug.kinner.json (the unfixed model, which TLC-violates the PolecatEventuallyWorking liveness property).\n\nProposed change to gastown: insert `checkParkedWork(ctx RoleContext)` in `internal/cmd/prime.go:runPrime()` after `checkSlungWork()`. The new function reads the persisted `parked-<agent>.json`, queries the gate's status, and if the gate is already Closed, fires the resume directive directly -- removing the dependency on wake mail for recovery.\n\nMODEL TOPOLOGY:\n  - All bug-spec components (Polecat, Issue, Parker, Gate, Deacon, NeverFires stub)\n  - + PrimeRecovery (Pr): observes Polecat (looking for Parked) and Gate (looking for Closed). When both conditions hold, sends Wake to Pol.WAKE_IN. Single-shot.\n\nFan-in on Polecat.WAKE_IN: both Deacon.WAKE_OUT and PrimeRecovery.WAKE_OUT bind to it. Per Kinner backlog 074, the compiler synthesizes the merge -- whichever sender fires first delivers the wake.\n\nKEY GATE: PrimeRecovery's transition is guarded on (polecatState=Parked AND gateState=Closed). It fires whenever those conditions hold. With Deacon's crash branch, conditions hold; PrimeRecovery fires; Polecat receives Wake; reaches Working. With Deacon's success branch, Polecat reaches Working before PrimeRecovery's guard would fire. Both branches converge on Polecat=Working.\n\nVerification: PolecatEventuallyWorking liveness should hold across the full state space.",
+
+  "actors": [],
+
+  "components": [
+    {"use": "Polecat", "as": "Pol", "fairness": "weak",
+     "bind": {
+       "SLING":         "StubSling.OUT",
+       "HOOK_IN":       "StubHook.OUT",
+       "ISSUE_OBSERVE": "Iss",
+       "PARK_IN":       "Pkr.PARK_OUT",
+       "WAKE_IN":       "Dec.WAKE_OUT"
+     }},
+
+    {"use": "Issue", "as": "Iss", "fairness": "weak",
+     "bind": {
+       "SLING":           "StubIss.OUT",
+       "POLECAT_OBSERVE": "Pol"
+     }},
+
+    {"use": "Parker", "as": "Pkr", "fairness": "weak",
+     "bind": {
+       "PARK_OUT": "Pol.PARK_IN"
+     }},
+
+    {"use": "Gate", "as": "Gt", "fairness": "weak",
+     "bind": {
+       "CLOSE_IN": "Dec.GATE_CLOSE_OUT"
+     }},
+
+    {"use": "Deacon", "as": "Dec", "fairness": "weak",
+     "bind": {
+       "GATE_CLOSE_OUT": "Gt.CLOSE_IN",
+       "GATE_OBSERVE":   "Gt",
+       "WAKE_OUT":       "Pol.WAKE_IN"
+     }},
+
+    {"use": "PrimeRecovery", "as": "Pr", "fairness": "weak",
+     "bind": {
+       "POLECAT_OBSERVE": "Pol",
+       "GATE_OBSERVE":    "Gt",
+       "WAKE_OUT":        "Pol.WAKE_IN"
+     }},
+
+    {"use": "NeverFires", "as": "StubSling", "fairness": "weak",
+     "bind": {}},
+    {"use": "NeverFires", "as": "StubHook", "fairness": "weak",
+     "bind": {}},
+    {"use": "NeverFires", "as": "StubIss", "fairness": "weak",
+     "bind": {}}
+  ],
+
+  "invariants": [],
+
+  "properties": [
+    {
+      "id": "PolecatEventuallyWorking",
+      "description": "Liveness: under fairness, the parked polecat eventually reaches Working. Should HOLD with PrimeRecovery composed in -- when Deacon crashes after closing the gate, PrimeRecovery's guard (Polecat=Parked AND Gate=Closed) becomes true and PrimeRecovery sends Wake.",
+      "expression": "<>(Pol.polecatState = Pol.Working)",
+      "severity": "high"
+    }
+  ]
+}

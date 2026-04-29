@@ -39,8 +39,15 @@
        "SLING":         "SLING_TO_POLECAT",
        "HOOK_IN":       "Hk.AGENT",
        "MERGE_READY":   "MERGE_READY_OUT",
-       "ISSUE_OBSERVE": "Iss"
+       "ISSUE_OBSERVE": "Iss",
+       "PARK_IN":       "ParkStub.OUT",
+       "WAKE_IN":       "WakeStub.OUT"
      }},
+
+    {"use": "NeverFires", "as": "ParkStub",
+     "bind": {}},
+    {"use": "NeverFires", "as": "WakeStub",
+     "bind": {}},
 
     {"use": "Issue", "as": "Iss",
      "bind": {
